@@ -1703,7 +1703,7 @@ watch(activePrompt, (newVal) => {
 		<!-- Board area: left panel (Agora + Judgement) | Board with score track | right panel (Wonders + Buildings) -->
 		<div class="flex flex-col md:flex-row gap-3 md:gap-4 items-center md:items-start justify-center w-full">
 			<!-- Left panel: Agora + Judgement cards -->
-			<div class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none">
+			<div class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto">
 				<!-- Agora -->
 				<div
 					class="w-[80px] h-[80px] rounded-lg border-2 border-amber-600/50 bg-amber-900/20 flex flex-col items-center justify-center gap-1"

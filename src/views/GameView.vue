@@ -118,7 +118,7 @@ async function abandonGame() {
 		</div>
 
 		<!-- Spacer for pinned header -->
-		<div class="h-14 md:h-16" />
+		<div class="h-20 md:h-16" />
 
 		<div class="w-full flex flex-col items-center p-2 md:p-6">
 			<!-- Game over banner -->
