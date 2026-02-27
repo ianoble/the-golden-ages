@@ -247,6 +247,22 @@ async function abandonGame(matchID: string) {
 			}),
 		});
 		if (!res.ok) throw new Error("Server rejected leave request");
+
+		const botCredsKey = `bgf:bots:${gameDef.id}:${matchID}`;
+		const botCreds = JSON.parse(localStorage.getItem(botCredsKey) || "{}");
+		const botPlayerIDs = Object.keys(botCreds);
+		if (botPlayerIDs.length > 0) {
+			for (const botPid of botPlayerIDs) {
+				try {
+					await fetch(`${SERVER_URL}/games/${gameDef.id}/${matchID}/leave`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ playerID: botPid, credentials: botCreds[botPid] }),
+					});
+				} catch { /* best effort */ }
+			}
+			localStorage.removeItem(botCredsKey);
+		}
 	} catch {
 		// Even if the server call fails, clean up locally
 	}

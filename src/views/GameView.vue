@@ -64,6 +64,23 @@ async function abandonGame() {
 				credentials: session.credentials,
 			}),
 		});
+
+		// If remaining players are all bots, clean up the match
+		const botCredsKey = `bgf:bots:${gameDef.id}:${props.matchID}`;
+		const botCreds = JSON.parse(localStorage.getItem(botCredsKey) || "{}");
+		const botPlayerIDs = Object.keys(botCreds);
+		if (botPlayerIDs.length > 0) {
+			for (const botPid of botPlayerIDs) {
+				try {
+					await fetch(`${SERVER_URL}/games/${gameDef.id}/${props.matchID}/leave`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ playerID: botPid, credentials: botCreds[botPid] }),
+					});
+				} catch { /* best effort */ }
+			}
+			localStorage.removeItem(botCredsKey);
+		}
 	} catch {
 		// Clean up locally even if the server call fails
 	}
