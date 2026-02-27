@@ -364,10 +364,13 @@ function cellWaterEdges(row: number, col: number): boolean[] {
 
 // Debug: log edge state once on load
 const _edgeDebugDone = ref(false);
-watch(() => G.value?.boardEdges, (be) => {
-	if (be && !_edgeDebugDone.value) {
+watch(() => G.value, (gs) => {
+	if (gs && !_edgeDebugDone.value) {
 		_edgeDebugDone.value = true;
-		console.log('[edge-debug] boardEdges keys:', Object.keys(be), 'sample:', be[Object.keys(be)[0]]);
+		const gState = gs as GoldenAgesState;
+		console.log('[edge-debug] G keys:', Object.keys(gs));
+		console.log('[edge-debug] boardEdges:', gState.boardEdges);
+		console.log('[edge-debug] assignedLTile edges:', gState.players?.['0']?.assignedLTile?.edges);
 	}
 }, { immediate: true });
 
