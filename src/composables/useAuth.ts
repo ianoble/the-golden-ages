@@ -144,3 +144,53 @@ export async function deleteServerSession(gameName: string, matchID: string) {
 		});
 	} catch { /* best effort */ }
 }
+
+// ---------------------------------------------------------------------------
+// Abandon voting
+// ---------------------------------------------------------------------------
+
+export interface AbandonVoteStatus {
+	voters: string[];
+	totalHumans: number;
+	allAgreed: boolean;
+}
+
+export async function voteToAbandon(gameName: string, matchID: string): Promise<AbandonVoteStatus | null> {
+	if (!playerToken.value) return null;
+	try {
+		const res = await fetch(`${SERVER_URL}/auth/vote-abandon`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', ...authHeaders() },
+			body: JSON.stringify({ gameName, matchID }),
+		});
+		if (!res.ok) return null;
+		return await res.json();
+	} catch {
+		return null;
+	}
+}
+
+export async function cancelAbandonVote(gameName: string, matchID: string): Promise<void> {
+	if (!playerToken.value) return;
+	try {
+		await fetch(`${SERVER_URL}/auth/vote-abandon/${gameName}/${matchID}`, {
+			method: 'DELETE',
+			headers: authHeaders(),
+		});
+	} catch { /* best effort */ }
+}
+
+export async function getAbandonVoteStatus(gameName: string, matchID: string): Promise<AbandonVoteStatus | null> {
+	if (!playerToken.value) return null;
+	try {
+		const res = await fetch(`${SERVER_URL}/auth/vote-abandon/${gameName}/${matchID}`, {
+			headers: authHeaders(),
+		});
+		if (!res.ok) return null;
+		const data = await res.json();
+		if (!data.voters || data.voters.length === 0) return null;
+		return data;
+	} catch {
+		return null;
+	}
+}

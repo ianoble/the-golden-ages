@@ -779,11 +779,17 @@ watch(
 // Action phase
 // ---------------------------------------------------------------------------
 
+const currentPlayerId = computed(() => {
+	return (state.value as unknown as { ctx?: { currentPlayer?: string } })?.ctx?.currentPlayer ?? null;
+});
+
 const currentPlayerColor = computed(() => {
-	if (!G.value?.players) return null;
-	const cp = (state.value as unknown as { ctx?: { currentPlayer?: string } })?.ctx?.currentPlayer;
-	if (!cp) return null;
-	return G.value.players[cp]?.color ?? null;
+	if (!G.value?.players || !currentPlayerId.value) return null;
+	return G.value.players[currentPlayerId.value]?.color ?? null;
+});
+
+const isViewedPlayersTurn = computed(() => {
+	return currentPlayerId.value === viewedPlayerId.value;
 });
 
 const myPassedThisEra = computed(() => myPlayer.value?.passedThisEra ?? false);
@@ -2115,6 +2121,11 @@ watch(activePrompt, (newVal) => {
 						>Golden Age</span
 					>
 					<span v-if="isViewingSelf" class="text-slate-500 text-xs">(You)</span>
+					<span
+						v-if="isViewedPlayersTurn"
+						class="text-[10px] px-1.5 py-0.5 rounded font-medium animate-pulse"
+						:class="isViewingSelf ? 'bg-emerald-800/60 text-emerald-300' : 'bg-blue-800/60 text-blue-300'"
+					>{{ isViewingSelf ? 'Your Turn' : 'Active Turn' }}</span>
 					<span
 						v-if="isTechSelectionActive"
 						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
