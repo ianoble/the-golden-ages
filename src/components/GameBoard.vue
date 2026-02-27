@@ -1954,9 +1954,9 @@ watch(activePrompt, (newVal) => {
 			</div>
 
 			<!-- Right panel: Wonders + Buildings -->
-			<div v-if="availableWonders.length > 0 || availableBuildings.length > 0" class="flex gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto">
-				<!-- Wonders column -->
-				<div v-if="availableWonders.length > 0" class="flex flex-col gap-2">
+			<div v-if="availableWonders.length > 0 || availableBuildings.length > 0" class="flex flex-col md:flex-row gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto">
+				<!-- Wonders -->
+				<div v-if="availableWonders.length > 0" class="flex flex-row md:flex-col gap-2">
 					<div
 						v-for="card in availableWonders"
 						:key="card.id"
@@ -1987,8 +1987,8 @@ watch(activePrompt, (newVal) => {
 					</div>
 				</div>
 
-				<!-- Buildings column -->
-				<div v-if="availableBuildings.length > 0" class="flex flex-col gap-2">
+				<!-- Buildings -->
+				<div v-if="availableBuildings.length > 0" class="flex flex-row md:flex-col gap-2">
 					<div
 						v-for="card in availableBuildings"
 						:key="card.id"
