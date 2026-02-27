@@ -1741,7 +1741,7 @@ watch(activePrompt, (newVal) => {
 			</div>
 
 			<!-- Board with score track -->
-			<div class="order-1 md:order-none w-full md:w-auto overflow-x-auto">
+			<div class="order-1 md:order-none w-full md:w-auto overflow-x-auto md:overflow-x-visible">
 			<div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col min-w-fit">
 				<!-- Top edge of score track (0 at left → 30 at right) -->
 				<div class="flex">
