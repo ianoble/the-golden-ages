@@ -6,6 +6,7 @@ import { gameDef, type GoldenAgesState, type GamePhase } from "../logic/game-log
 import { useBotPlayers } from "../composables/useBotPlayers";
 import GameBoard from "../components/GameBoard.vue";
 import { SERVER_URL } from "../config";
+import { deleteServerSession } from "../composables/useAuth";
 
 const props = defineProps<{ matchID: string; playerID: string }>();
 const router = useRouter();
@@ -86,6 +87,7 @@ async function abandonGame() {
 
 	disconnect();
 	clearSession(gameDef.id, props.matchID);
+	await deleteServerSession(gameDef.id, props.matchID);
 	router.push("/");
 }
 </script>

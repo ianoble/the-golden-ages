@@ -4,20 +4,52 @@ import { useRouter } from "vue-router";
 import { saveSession, loadSession, clearSession } from "@noble/bg-engine/client";
 import { gameDef } from "../logic/game-logic";
 import { SERVER_URL } from "../config";
+import { useAuth, authHeaders, syncSessionToServer, deleteServerSession, fetchServerSessions } from "../composables/useAuth";
+
 const POLL_INTERVAL = 3000;
 
 const router = useRouter();
 
 // ---------------------------------------------------------------------------
-// Player identity
+// Auth
 // ---------------------------------------------------------------------------
 
-const playerName = ref(localStorage.getItem("bgf:playerName") ?? "");
+const { playerName, isLoggedIn, loginError, loading: authLoading, register, login, logout } = useAuth();
+const authMode = ref<"login" | "register">("login");
+const authName = ref("");
+const authPin = ref("");
 
-function persistName(): string {
-	const name = playerName.value.trim() || "Player";
-	localStorage.setItem("bgf:playerName", name);
-	return name;
+async function handleAuth() {
+	const ok = authMode.value === "register"
+		? await register(authName.value, authPin.value)
+		: await login(authName.value, authPin.value);
+	if (ok) {
+		authName.value = "";
+		authPin.value = "";
+		await restoreServerSessions();
+		await refreshData();
+	}
+}
+
+function handleLogout() {
+	logout();
+	myGames.value = [];
+	openGames.value = [];
+}
+
+async function restoreServerSessions() {
+	const sessions = await fetchServerSessions();
+	for (const s of sessions) {
+		if (s.gameName !== gameDef.id) continue;
+		const existing = loadSession(gameDef.id, s.matchID);
+		if (!existing) {
+			saveSession(gameDef.id, s.matchID, {
+				playerID: s.playerSeatID,
+				credentials: s.credentials,
+				playerName: s.playerName,
+			});
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -146,18 +178,18 @@ async function refreshData() {
 // ---------------------------------------------------------------------------
 
 async function createMatch() {
-	if (!playerName.value.trim()) return;
 	creating.value = true;
 	errorMsg.value = "";
 
 	try {
-		const name = persistName();
+		const name = playerName.value.trim() || "Player";
 
 		const createRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/create`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: { "Content-Type": "application/json", ...authHeaders() },
 			body: JSON.stringify({ numPlayers: numPlayers.value }),
 		});
+		if (createRes.status === 403) throw new Error("Authentication required to create games");
 		if (!createRes.ok) throw new Error("Server rejected match creation");
 		const { matchID } = (await createRes.json()) as { matchID: string };
 
@@ -174,6 +206,7 @@ async function createMatch() {
 			credentials: playerCredentials,
 			playerName: name,
 		});
+		await syncSessionToServer(gameDef.id, matchID, "0", playerCredentials, name);
 
 		hostedMatchID.value = matchID;
 		showCreateForm.value = false;
@@ -191,14 +224,10 @@ async function createMatch() {
 // ---------------------------------------------------------------------------
 
 async function joinGame(matchID: string) {
-	if (!playerName.value.trim()) {
-		errorMsg.value = "Please enter your name first";
-		return;
-	}
 	errorMsg.value = "";
 
 	try {
-		const name = persistName();
+		const name = playerName.value.trim() || "Player";
 
 		const match = await fetchMatch(matchID);
 		if (!match) throw new Error("Match not found");
@@ -220,6 +249,7 @@ async function joinGame(matchID: string) {
 			credentials: playerCredentials,
 			playerName: name,
 		});
+		await syncSessionToServer(gameDef.id, matchID, seatID, playerCredentials, name);
 
 		router.push(`/game/${matchID}/${seatID}`);
 	} catch (e: unknown) {
@@ -267,6 +297,7 @@ async function abandonGame(matchID: string) {
 	}
 
 	clearSession(gameDef.id, matchID);
+	await deleteServerSession(gameDef.id, matchID);
 	await refreshData();
 }
 
@@ -418,8 +449,11 @@ function startBrowsePolling() {
 	pollTimer = setInterval(refreshData, POLL_INTERVAL);
 }
 
-onMounted(() => {
-	refreshData();
+onMounted(async () => {
+	if (isLoggedIn.value) {
+		await restoreServerSessions();
+	}
+	await refreshData();
 	startBrowsePolling();
 });
 
@@ -431,25 +465,86 @@ onUnmounted(stopPolling);
 		<!-- Header -->
 		<header class="border-b border-slate-800">
 			<div class="max-w-5xl mx-auto px-6 py-8">
-				<h1 class="text-4xl font-bold tracking-tight">{{ gameDef.displayName }}</h1>
-				<p class="mt-2 text-slate-400">{{ gameDef.description }}</p>
-
-				<!-- Player name (always visible) -->
-				<div class="mt-6 flex items-center gap-3 max-w-sm">
-					<label class="text-sm font-medium text-slate-400 shrink-0">Your Name</label>
-					<input
-						v-model="playerName"
-						placeholder="Enter your name"
-						maxlength="24"
-						class="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
-						@change="persistName"
-					/>
+				<div class="flex items-start justify-between">
+					<div>
+						<h1 class="text-4xl font-bold tracking-tight">{{ gameDef.displayName }}</h1>
+						<p class="mt-2 text-slate-400">{{ gameDef.description }}</p>
+					</div>
+					<div v-if="isLoggedIn" class="flex items-center gap-3 shrink-0">
+						<span class="text-sm text-slate-400">Signed in as <strong class="text-white">{{ playerName }}</strong></span>
+						<button
+							class="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg transition-colors"
+							@click="handleLogout"
+						>
+							Sign Out
+						</button>
+					</div>
 				</div>
 			</div>
 		</header>
 
 		<!-- Main content -->
 		<main class="max-w-5xl mx-auto px-6 py-8">
+
+			<!-- Auth gate -->
+			<template v-if="!isLoggedIn">
+				<div class="max-w-sm mx-auto mt-8 space-y-6">
+					<div class="text-center">
+						<h2 class="text-xl font-semibold">{{ authMode === 'login' ? 'Sign In' : 'Create Account' }}</h2>
+						<p class="mt-1 text-sm text-slate-400">
+							{{ authMode === 'login' ? 'Sign in to create and rejoin games from any device.' : 'Pick a name and a PIN to get started.' }}
+						</p>
+					</div>
+
+					<div class="space-y-3">
+						<div>
+							<label class="block text-sm font-medium text-slate-400 mb-1">Name</label>
+							<input
+								v-model="authName"
+								placeholder="Your display name"
+								maxlength="24"
+								class="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+								@keyup.enter="handleAuth"
+							/>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-slate-400 mb-1">PIN</label>
+							<input
+								v-model="authPin"
+								type="password"
+								placeholder="4-8 characters"
+								maxlength="8"
+								class="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+								@keyup.enter="handleAuth"
+							/>
+						</div>
+					</div>
+
+					<p v-if="loginError" class="text-sm text-red-400 text-center">{{ loginError }}</p>
+
+					<button
+						class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors disabled:opacity-50"
+						:disabled="authLoading || !authName.trim() || authPin.length < 4"
+						@click="handleAuth"
+					>
+						{{ authLoading ? 'Please wait...' : (authMode === 'login' ? 'Sign In' : 'Create Account') }}
+					</button>
+
+					<p class="text-center text-sm text-slate-500">
+						<template v-if="authMode === 'login'">
+							Don't have an account?
+							<button class="text-blue-400 hover:text-blue-300 font-medium" @click="authMode = 'register'; loginError = ''">Create one</button>
+						</template>
+						<template v-else>
+							Already have an account?
+							<button class="text-blue-400 hover:text-blue-300 font-medium" @click="authMode = 'login'; loginError = ''">Sign in</button>
+						</template>
+					</p>
+				</div>
+			</template>
+
+			<!-- Logged-in content -->
+			<template v-else>
 			<!-- Error banner -->
 			<div
 				v-if="errorMsg"
@@ -470,8 +565,7 @@ onUnmounted(stopPolling);
 				<div class="mb-8">
 					<button
 						v-if="!showCreateForm"
-						class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors disabled:opacity-50"
-						:disabled="!playerName.trim()"
+						class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors"
 						@click="showCreateForm = true"
 					>
 						Create New Game
@@ -604,8 +698,7 @@ onUnmounted(stopPolling);
 										</p>
 									</div>
 									<button
-										class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-										:disabled="!playerName.trim()"
+										class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition-colors"
 										@click="joinGame(game.matchID)"
 									>
 										Join
@@ -684,6 +777,7 @@ onUnmounted(stopPolling);
 						</button>
 					</div>
 				</div>
+			</template>
 			</template>
 		</main>
 	</div>
