@@ -5,8 +5,7 @@ import { useGame, loadSession, clearSession } from "@noble/bg-engine/client";
 import { gameDef, type GoldenAgesState, type GamePhase } from "../logic/game-logic";
 import { useBotPlayers } from "../composables/useBotPlayers";
 import GameBoard from "../components/GameBoard.vue";
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:8000";
+import { SERVER_URL } from "../config";
 
 const props = defineProps<{ matchID: string; playerID: string }>();
 const router = useRouter();

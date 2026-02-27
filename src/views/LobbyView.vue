@@ -3,8 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { saveSession, loadSession, clearSession } from "@noble/bg-engine/client";
 import { gameDef } from "../logic/game-logic";
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:8000";
+import { SERVER_URL } from "../config";
 const POLL_INTERVAL = 3000;
 
 const router = useRouter();

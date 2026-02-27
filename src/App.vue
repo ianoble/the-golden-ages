@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { NobleProvider } from "@noble/bg-engine/client";
-
-const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:8000";
+import { SERVER_URL } from "./config";
 </script>
 
 <template>
-	<NobleProvider :server-url="serverUrl" :debug="true">
+	<NobleProvider :server-url="SERVER_URL" :debug="true">
 		<router-view />
 	</NobleProvider>
 </template>

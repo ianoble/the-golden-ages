@@ -15,8 +15,7 @@ import {
 	type BoardPiece,
 } from '../logic/game-logic';
 import type { TileRotation } from '@noble/bg-engine/client';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
+import { SERVER_URL } from '../config';
 
 interface BotClient {
 	playerID: string;

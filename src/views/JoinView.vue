@@ -3,8 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { saveSession, loadSession } from '@noble/bg-engine/client';
 import { gameDef } from '../logic/game-logic';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
+import { SERVER_URL } from '../config';
 
 const props = defineProps<{ matchID: string }>();
 const router = useRouter();
