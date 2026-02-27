@@ -11,6 +11,7 @@ import {
 	TECH_TREE,
 	TECH_COSTS,
 	canPlaceGameTile,
+	getPlayerTileEdges,
 	getMovementRange,
 	getReachableCells,
 	getUnlockedBuildingSlots,
@@ -19,6 +20,7 @@ import {
 	getPlayerRankings,
 	WONDER_DEFS,
 	type GoldenAgesState,
+	type CellEdges,
 	type BoardPiece,
 	type BoardCity,
 	type GamePhase,
@@ -113,10 +115,11 @@ const currentShape = computed(() => {
 const validAnchors = computed<[number, number][]>(() => {
 	if (!isTilePlacement.value) return [];
 	if (!G.value?.board || !G.value?.tiles || !currentShape.value || !isMyTurn.value) return [];
+	const tileEdges = playerID.value ? getPlayerTileEdges(G.value as GoldenAgesState, playerID.value) : undefined;
 	const anchors: [number, number][] = [];
 	for (let r = 0; r < G.value.board.rows; r++) {
 		for (let c = 0; c < G.value.board.cols; c++) {
-			if (canPlaceGameTile(G.value.tiles, G.value.board, currentShape.value, r, c, rotation.value)) {
+			if (canPlaceGameTile(G.value.tiles, G.value.board, currentShape.value, r, c, rotation.value, (G.value as GoldenAgesState).boardEdges, tileEdges)) {
 				anchors.push([r, c]);
 			}
 		}
@@ -304,6 +307,70 @@ const previewTileResources = computed((): Map<string, ResourceType[]> => {
 	return map;
 });
 
+// ---------------------------------------------------------------------------
+// Water/land edge rendering
+// ---------------------------------------------------------------------------
+
+function rotateCellEdgesLocal(edges: CellEdges, rot: TileRotation): CellEdges {
+	const [t, r, b, l] = edges;
+	switch (rot) {
+		case 0: return [t, r, b, l];
+		case 90: return [l, t, r, b];
+		case 180: return [b, l, t, r];
+		case 270: return [r, b, l, t];
+	}
+}
+
+const previewTileEdges = computed((): Map<string, CellEdges> => {
+	const map = new Map<string, CellEdges>();
+	const tile = myTileTemplate.value;
+	if (!tile?.edges) return map;
+	const offsets = previewShapeOffsets.value;
+	for (let i = 0; i < offsets.length; i++) {
+		const edges = tile.edges[i];
+		if (edges) {
+			map.set(`${offsets[i][0]},${offsets[i][1]}`, rotateCellEdgesLocal(edges, rotation.value));
+		}
+	}
+	return map;
+});
+
+function getBoardEdges(row: number, col: number): CellEdges | undefined {
+	const gs = G.value as GoldenAgesState | undefined;
+	return gs?.boardEdges?.[`${row},${col}`];
+}
+
+function getPreviewBoardEdges(row: number, col: number): CellEdges | undefined {
+	if (!hoverAnchor.value || !myTileTemplate.value?.edges) return undefined;
+	const offsets = previewShapeOffsets.value;
+	const [ar, ac] = hoverAnchor.value;
+	for (let i = 0; i < offsets.length; i++) {
+		if (ar + offsets[i][0] === row && ac + offsets[i][1] === col) {
+			return rotateCellEdgesLocal(myTileTemplate.value.edges[i], rotation.value);
+		}
+	}
+	return undefined;
+}
+
+function waterEdges(edges: CellEdges | undefined): boolean[] {
+	if (!edges) return [false, false, false, false];
+	return [edges[0] === 'water', edges[1] === 'water', edges[2] === 'water', edges[3] === 'water'];
+}
+
+function cellWaterEdges(row: number, col: number): boolean[] {
+	const edges = getPreviewBoardEdges(row, col) ?? getBoardEdges(row, col);
+	return waterEdges(edges);
+}
+
+// Debug: log edge state once on load
+const _edgeDebugDone = ref(false);
+watch(() => G.value?.boardEdges, (be) => {
+	if (be && !_edgeDebugDone.value) {
+		_edgeDebugDone.value = true;
+		console.log('[edge-debug] boardEdges keys:', Object.keys(be), 'sample:', be[Object.keys(be)[0]]);
+	}
+}, { immediate: true });
+
 const boardPreviewResources = computed((): Map<string, ResourceType[]> => {
 	const map = new Map<string, ResourceType[]>();
 	const tile = myTileTemplate.value;
@@ -443,10 +510,10 @@ function cellClasses(row: number, col: number): string {
 	}
 
 	if (highlightedCells.value.has(key)) {
-		return "bg-green-900/30 border border-green-700/40";
+		return "bg-green-900/40 border border-green-700/50";
 	}
 
-	return "bg-slate-700/30 border border-slate-700/30";
+	return "border border-slate-700/20";
 }
 
 const PLAYER_TILE_BG: Record<PlayerColor, string> = {
@@ -1579,6 +1646,12 @@ watch(activePrompt, (newVal) => {
 						class="rounded-sm flex items-center justify-center relative"
 						:class="previewShapeSet.has(`${r - 1},${c - 1}`) ? 'bg-green-700/50 border border-green-500/60' : 'bg-transparent'"
 					>
+						<template v-if="previewTileEdges.has(`${r - 1},${c - 1}`)">
+							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[0]" class="absolute top-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10" />
+							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[1]" class="absolute top-0 right-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10" />
+							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[2]" class="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10" />
+							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[3]" class="absolute top-0 left-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10" />
+						</template>
 						<template v-if="previewTileResources.has(`${r - 1},${c - 1}`)">
 							<template v-if="previewTileResources.get(`${r - 1},${c - 1}`)!.length === 1">
 								<component
@@ -1784,7 +1857,8 @@ watch(activePrompt, (newVal) => {
 					</div>
 
 					<!-- Board -->
-					<div class="p-1">
+					<div class="p-1 relative">
+						<div class="absolute inset-0 opacity-10" style="background: url('/images/water-bg.jpg') center / cover no-repeat;" />
 						<SquareGrid :board="G.board" :cell-size="96" @cell-click="onCellClick">
 							<template #cell="{ row, col }">
 								<div
@@ -1793,6 +1867,11 @@ watch(activePrompt, (newVal) => {
 									@mouseenter="onCellHover(row, col)"
 									@mouseleave="onCellLeave"
 								>
+									<!-- Water edge indicators -->
+									<div v-if="cellWaterEdges(row, col)[0]" class="absolute top-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10" />
+									<div v-if="cellWaterEdges(row, col)[1]" class="absolute top-0 right-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10" />
+									<div v-if="cellWaterEdges(row, col)[2]" class="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10" />
+									<div v-if="cellWaterEdges(row, col)[3]" class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10" />
 									<!-- <span
 										v-if="isStartingTileLabel(row, col)"
 										class="text-amber-300/60 text-xs font-medium pointer-events-none select-none"

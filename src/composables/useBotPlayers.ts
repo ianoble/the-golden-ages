@@ -7,6 +7,7 @@ import {
 	ERA_TILE_SHAPES,
 	ROTATIONS,
 	canPlaceGameTile,
+	getPlayerTileEdges,
 	getMovementRange,
 	getReachableCells,
 	type GoldenAgesState,
@@ -35,14 +36,16 @@ function loadBotCredentials(matchID: string): Record<string, string> {
 function findRandomValidPlacement(
 	G: GoldenAgesState,
 	era: Era,
+	pid: string,
 ): { row: number; col: number; rotation: TileRotation } | null {
 	const shape = ERA_TILE_SHAPES[era];
+	const tileEdges = getPlayerTileEdges(G, pid);
 	const options: { row: number; col: number; rotation: TileRotation }[] = [];
 
 	for (const rot of ROTATIONS) {
 		for (let r = 0; r < G.board.rows; r++) {
 			for (let c = 0; c < G.board.cols; c++) {
-				if (canPlaceGameTile(G.tiles, G.board, shape, r, c, rot)) {
+				if (canPlaceGameTile(G.tiles, G.board, shape, r, c, rot, G.boardEdges, tileEdges)) {
 					options.push({ row: r, col: c, rotation: rot });
 				}
 			}
@@ -117,7 +120,7 @@ export function useBotPlayers(matchID: Ref<string>, humanPlayerID: Ref<string>) 
 						if (G.phase === 'eraStart') {
 							client.moves.chooseCivCard(false);
 						} else if (G.phase === 'tilePlacement') {
-							const placement = findRandomValidPlacement(G, G.currentEra);
+							const placement = findRandomValidPlacement(G, G.currentEra, bot.playerID);
 							if (placement) {
 								client.moves.placeTile(placement.row, placement.col, placement.rotation, false);
 							}
