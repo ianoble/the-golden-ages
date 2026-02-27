@@ -1433,19 +1433,19 @@ watch(activePrompt, (newVal) => {
 <template>
 	<!-- Pinned prompt banner (fixed below header) -->
 	<Teleport to="body">
-		<div v-if="activePrompt" class="fixed left-0 right-0 z-30 bg-slate-800/95 border-b border-amber-600/40 backdrop-blur-sm" style="top: 70px">
-			<div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-center gap-4">
+		<div v-if="activePrompt" class="fixed left-0 right-0 z-30 bg-slate-800/95 border-b border-amber-600/40 backdrop-blur-sm" style="top: 56px">
+			<div class="max-w-5xl mx-auto px-3 md:px-6 py-2 md:py-3 flex flex-wrap items-center justify-center gap-2 md:gap-4">
 				<!-- Capital relocation -->
 				<template v-if="activePrompt === 'capitalMove'">
-					<p class="text-sm text-slate-200 font-medium">Move your capital and workers to the new tile?</p>
+					<p class="text-xs md:text-sm text-slate-200 font-medium">Move your capital and workers to the new tile?</p>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
 						@click="confirmPlacement(true)"
 					>
 						Yes, move capital
 					</button>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
 						@click="confirmPlacement(false)"
 					>
 						No, keep it
@@ -1455,15 +1455,15 @@ watch(activePrompt, (newVal) => {
 
 				<!-- City founding -->
 				<template v-else-if="activePrompt === 'foundCity'">
-					<p class="text-sm text-slate-200 font-medium">Found a city here?</p>
+					<p class="text-xs md:text-sm text-slate-200 font-medium">Found a city here?</p>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs md:text-sm font-medium transition-colors"
 						@click="onConfirmCity(true)"
 					>
 						Yes
 					</button>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
 						@click="onConfirmCity(false)"
 					>
 						No
@@ -1472,17 +1472,17 @@ watch(activePrompt, (newVal) => {
 
 				<!-- Soldier attack confirmation -->
 				<template v-else-if="activePrompt === 'soldierAttack'">
-					<p class="text-sm text-red-300 font-medium">
+					<p class="text-xs md:text-sm text-red-300 font-medium">
 						Attack for {{ soldierAttackCost }} gold?
 					</p>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
 						@click="onConfirmAttack(true)"
 					>
 						Attack
 					</button>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
 						@click="onConfirmAttack(false)"
 					>
 						Cancel
@@ -1491,15 +1491,15 @@ watch(activePrompt, (newVal) => {
 
 				<!-- Soldier city founding after combat -->
 				<template v-else-if="activePrompt === 'soldierCity'">
-					<p class="text-sm text-slate-200 font-medium">Found a city here?</p>
+					<p class="text-xs md:text-sm text-slate-200 font-medium">Found a city here?</p>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
 						@click="onSoldierConfirmCity(true)"
 					>
 						Yes
 					</button>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
 						@click="onSoldierConfirmCity(false)"
 					>
 						No
@@ -1508,8 +1508,8 @@ watch(activePrompt, (newVal) => {
 
 				<!-- India tech selection -->
 				<template v-else-if="activePrompt === 'indiaSelect'">
-					<p class="text-sm text-purple-300 font-medium shrink-0">Choose a level 5 technology:</p>
-					<div class="flex gap-2">
+					<p class="text-xs md:text-sm text-purple-300 font-medium shrink-0">Choose a level 5 technology:</p>
+					<div class="flex flex-wrap md:flex-nowrap gap-2">
 						<button
 							v-for="(row, rIdx) in TECH_TREE"
 							:key="`india-${rIdx}`"
@@ -1526,9 +1526,9 @@ watch(activePrompt, (newVal) => {
 
 				<!-- Collect golden age income -->
 				<template v-else-if="activePrompt === 'collectIncome'">
-					<p class="text-sm text-slate-200 font-medium">You are in a Golden Age.</p>
+					<p class="text-xs md:text-sm text-slate-200 font-medium">You are in a Golden Age.</p>
 					<button
-						class="px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium transition-colors"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
 						@click="onCollectIncome"
 					>
 						Collect 2 Gold
@@ -1537,7 +1537,7 @@ watch(activePrompt, (newVal) => {
 
 				<!-- Pick History's Judgement card -->
 				<template v-else-if="activePrompt === 'pickHistory'">
-					<p class="text-sm text-amber-300 font-medium shrink-0">Pick a History's Judgement card:</p>
+					<p class="text-xs md:text-sm text-amber-300 font-medium shrink-0">Pick a History's Judgement card:</p>
 					<div class="flex gap-2 overflow-x-auto">
 						<button
 							v-for="card in historyCards"
@@ -1560,7 +1560,7 @@ watch(activePrompt, (newVal) => {
 		</div>
 	</Teleport>
 
-	<div v-if="G?.board" class="flex flex-col items-center gap-6 w-full max-w-5xl mx-auto">
+	<div v-if="G?.board" class="flex flex-col items-center gap-4 md:gap-6 w-full max-w-5xl mx-auto px-2 md:px-0">
 		<!-- Tile placement controls -->
 		<div v-if="isTilePlacement && isMyTurn" class="flex items-center gap-4">
 			<span class="text-sm text-slate-400">Your tile:</span>
@@ -1628,7 +1628,7 @@ watch(activePrompt, (newVal) => {
 		</div>
 
 		<!-- Era Start: civilisation card choice -->
-		<div v-if="isEraStart && isMyTurn" class="w-full p-4 bg-slate-800 border border-green-600/50 rounded-xl">
+		<div v-if="isEraStart && isMyTurn" class="w-full p-3 md:p-4 bg-slate-800 border border-green-600/50 rounded-xl">
 			<template v-if="currentEra === 'I'">
 				<h3 class="text-sm font-medium text-green-300 mb-2">Reveal your Civilisation Card</h3>
 				<div v-if="myEraCard" class="flex items-center gap-4">
@@ -1701,9 +1701,9 @@ watch(activePrompt, (newVal) => {
 		</div>
 
 		<!-- Board area: left panel (Agora + Judgement) | Board with score track | right panel (Wonders + Buildings) -->
-		<div class="flex gap-4 items-start justify-center">
+		<div class="flex flex-col md:flex-row gap-3 md:gap-4 items-center md:items-start justify-center w-full">
 			<!-- Left panel: Agora + Judgement cards -->
-			<div class="flex flex-col gap-2 shrink-0 self-start">
+			<div class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none">
 				<!-- Agora -->
 				<div
 					class="w-[80px] h-[80px] rounded-lg border-2 border-amber-600/50 bg-amber-900/20 flex flex-col items-center justify-center gap-1"
@@ -1741,7 +1741,8 @@ watch(activePrompt, (newVal) => {
 			</div>
 
 			<!-- Board with score track -->
-			<div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col">
+			<div class="order-1 md:order-none w-full md:w-auto overflow-x-auto">
+			<div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col min-w-fit">
 				<!-- Top edge of score track (0 at left → 30 at right) -->
 				<div class="flex">
 					<div
@@ -1950,9 +1951,10 @@ watch(activePrompt, (newVal) => {
 					</div>
 				</div>
 			</div>
+			</div>
 
 			<!-- Right panel: Wonders + Buildings -->
-			<div v-if="availableWonders.length > 0 || availableBuildings.length > 0" class="flex gap-2 shrink-0 self-start">
+			<div v-if="availableWonders.length > 0 || availableBuildings.length > 0" class="flex gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto">
 				<!-- Wonders column -->
 				<div v-if="availableWonders.length > 0" class="flex flex-col gap-2">
 					<div
@@ -2016,7 +2018,7 @@ watch(activePrompt, (newVal) => {
 			:class="isViewingSelf ? PLAYER_COLOR_BORDER[viewedPlayer.color] : 'border-slate-700'"
 		>
 			<!-- Header: arrows + player info + resources -->
-			<div class="flex items-center gap-3 px-4 py-3 border-b border-slate-700/50">
+			<div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
 				<button
 					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
 					@click="cyclePlayer(-1)"
@@ -2024,7 +2026,7 @@ watch(activePrompt, (newVal) => {
 					&lsaquo;
 				</button>
 
-				<div class="flex items-center gap-2 flex-1 min-w-0">
+				<div class="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
 					<div class="w-3 h-3 rounded-full shrink-0" :class="PLAYER_COLOR_CLASSES[viewedPlayer.color]" />
 					<span class="font-medium capitalize" :class="PLAYER_COLOR_TEXT[viewedPlayer.color]">{{ viewedPlayer.color }}</span>
 					<span v-if="viewedPlayer.passedThisEra" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-800/60 text-amber-300 font-medium"
@@ -2170,8 +2172,8 @@ watch(activePrompt, (newVal) => {
 			</div>
 
 			<!-- Grid area: 6 cols x 4 rows, col 6 has row-span-2 cells -->
-			<div class="p-4">
-				<div class="grid gap-1" style="grid-template-columns: repeat(5, 1fr) auto; grid-template-rows: repeat(4, 85px)">
+			<div class="p-2 md:p-4 overflow-x-auto">
+				<div class="grid gap-1 min-w-[540px]" style="grid-template-columns: repeat(5, 1fr) auto; grid-template-rows: repeat(4, 85px)">
 					<template v-for="(row, rIdx) in TECH_TREE" :key="`row-${rIdx}`">
 						<div
 							v-for="(tech, cIdx) in row"
@@ -2248,10 +2250,10 @@ watch(activePrompt, (newVal) => {
 			</div>
 
 			<!-- Bottom third: building slots (left) + actions (right) -->
-			<div class="px-4 pb-4">
-				<div class="flex gap-4">
-					<!-- Building slots (left half) -->
-					<div class="flex gap-2 items-start">
+			<div class="px-3 md:px-4 pb-3 md:pb-4">
+				<div class="flex flex-wrap md:flex-nowrap gap-3 md:gap-4">
+					<!-- Building slots -->
+					<div class="flex gap-2 items-start overflow-x-auto">
 						<div
 							v-for="(_, slotIdx) in 3"
 							:key="`bslot-${slotIdx}`"
@@ -2355,8 +2357,8 @@ watch(activePrompt, (newVal) => {
 						</div>
 					</div>
 
-					<!-- Action grids (right half) -->
-					<div class="flex flex-col gap-3 ml-auto">
+					<!-- Action grids -->
+					<div class="flex flex-col gap-3 w-full md:w-auto md:ml-auto">
 						<!-- Invasion track -->
 						<div class="flex items-center justify-between gap-1">
 							<template v-for="(cost, idx) in INVASION_COSTS" :key="`inv-${idx}`">
@@ -2375,14 +2377,14 @@ watch(activePrompt, (newVal) => {
 								</div>
 							</template>
 						</div>
-						<div class="flex gap-3">
+						<div class="flex flex-wrap md:flex-nowrap gap-2 md:gap-3">
 							<template v-if="!activePrompt">
 								<!-- Worker actions (2x2) -->
-								<div class="grid grid-cols-2 gap-1">
+								<div class="grid grid-cols-2 gap-1 flex-1 md:flex-none">
 									<button
 										v-for="action in ACTION_TYPES.slice(0, 4)"
 										:key="action.type"
-										class="px-2 py-1.5 rounded border text-[11px] font-medium transition-colors text-left"
+										class="px-2 py-2.5 md:py-1.5 rounded border text-xs md:text-[11px] font-medium transition-colors text-left"
 										:class="
 											isViewingSelf &&
 											isActionPhase &&
@@ -2433,11 +2435,11 @@ watch(activePrompt, (newVal) => {
 								</div>
 
 								<!-- Non-worker actions (2x2) -->
-								<div class="grid grid-cols-2 gap-1">
+								<div class="grid grid-cols-2 gap-1 flex-1 md:flex-none">
 									<button
 										v-for="action in ACTION_TYPES.slice(4, 8)"
 										:key="action.type"
-										class="px-2 py-1.5 rounded border text-[11px] font-medium transition-colors text-left"
+										class="px-2 py-2.5 md:py-1.5 rounded border text-xs md:text-[11px] font-medium transition-colors text-left"
 										:class="[
 											isViewingSelf &&
 											isActionPhase &&
@@ -2502,15 +2504,14 @@ watch(activePrompt, (newVal) => {
 	<!-- Pinned hand at the bottom of the viewport -->
 	<div
 		v-if="myPlayer?.hand?.length"
-		class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 border-t border-slate-700 backdrop-blur-sm px-6 py-3"
+		class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 border-t border-slate-700 backdrop-blur-sm px-3 md:px-6 py-2 md:py-3"
 	>
 		<div class="max-w-5xl mx-auto">
-			<div class="flex items-center gap-3 overflow-x-auto">
-				<!-- <span class="text-xs text-slate-500 shrink-0">Your Hand</span> -->
+			<div class="flex items-center gap-2 md:gap-3 overflow-x-auto">
 				<div
 					v-for="card in myPlayer.hand"
 					:key="card.id"
-					class="w-[70px] h-[98px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
+					class="w-[60px] h-[84px] md:w-[70px] md:h-[98px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-1.5 md:p-2"
 					:class="[BACK_COLOR_CLASSES[card.backColor], BACK_COLOR_BORDER[card.backColor]]"
 					:title="card.description ?? ''"
 				>

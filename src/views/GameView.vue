@@ -78,12 +78,12 @@ async function abandonGame() {
 	<div class="min-h-screen bg-slate-900 text-white flex flex-col items-center">
 		<!-- Pinned top bar -->
 		<div class="fixed top-0 left-0 right-0 z-40 bg-slate-900 border-b border-slate-700/60">
-			<div class="max-w-5xl mx-auto flex items-center justify-between px-6 py-2">
-				<router-link to="/" class="text-sm text-slate-500 hover:text-slate-300 transition-colors"> &larr; Back to lobby </router-link>
+			<div class="max-w-5xl mx-auto flex flex-wrap md:flex-nowrap items-center justify-between px-3 md:px-6 py-1.5 md:py-2 gap-x-3 gap-y-0.5">
+				<router-link to="/" class="text-xs md:text-sm text-slate-500 hover:text-slate-300 transition-colors shrink-0"> &larr; Back </router-link>
 
-				<div class="flex flex-col items-center">
-					<h1 class="text-lg font-semibold text-white leading-tight my-2">{{ gameDef.displayName }}</h1>
-					<div v-if="G" class="flex items-center gap-3 text-xs text-slate-400 mb-1">
+				<div class="flex flex-col items-center order-first md:order-none w-full md:w-auto">
+					<h1 class="text-sm md:text-lg font-semibold text-white leading-tight my-1 md:my-2">{{ gameDef.displayName }}</h1>
+					<div v-if="G" class="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-400 mb-0.5 md:mb-1">
 						<span
 							>Era <strong class="text-white">{{ currentEra }}</strong></span
 						>
@@ -105,22 +105,22 @@ async function abandonGame() {
 					</div>
 				</div>
 
-				<div class="flex items-center gap-3">
+				<div class="flex items-center gap-2 md:gap-3 shrink-0">
 					<span
-						class="px-2.5 py-1 rounded-full text-xs"
+						class="px-2 md:px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs"
 						:class="isConnected ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
 						>{{ isConnected ? "Connected" : "Connecting..." }}</span
 					>
 
-					<button class="text-xs text-red-500/60 hover:text-red-400 transition-colors" @click="confirmingAbandon = true">Abandon</button>
+					<button class="text-[10px] md:text-xs text-red-500/60 hover:text-red-400 transition-colors" @click="confirmingAbandon = true">Abandon</button>
 				</div>
 			</div>
 		</div>
 
 		<!-- Spacer for pinned header -->
-		<div class="h-16" />
+		<div class="h-14 md:h-16" />
 
-		<div class="w-full flex flex-col items-center p-6">
+		<div class="w-full flex flex-col items-center p-2 md:p-6">
 			<!-- Game over banner -->
 			<div v-if="gameover" class="mb-6 text-center">
 				<p v-if="gameover.winner === playerID" class="text-2xl font-bold text-green-400">You win!</p>
