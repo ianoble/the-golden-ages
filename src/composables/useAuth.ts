@@ -5,6 +5,7 @@ const playerToken = ref<string | null>(localStorage.getItem('bgf:playerToken'));
 const playerName = ref<string>(localStorage.getItem('bgf:playerName') ?? '');
 
 export const isLoggedIn = computed(() => !!playerToken.value);
+export const isDevSession = computed(() => playerToken.value?.startsWith('dev:') ?? false);
 
 export function authHeaders(): Record<string, string> {
 	if (!playerToken.value) return {};
@@ -15,6 +16,14 @@ export function useAuth() {
 	const loginError = ref('');
 	const loading = ref(false);
 
+	function setLocalDevSession(name: string) {
+		const devToken = `dev:${name}`;
+		playerToken.value = devToken;
+		playerName.value = name;
+		localStorage.setItem('bgf:playerToken', devToken);
+		localStorage.setItem('bgf:playerName', name);
+	}
+
 	async function register(name: string, pin: string) {
 		loginError.value = '';
 		loading.value = true;
@@ -24,6 +33,10 @@ export function useAuth() {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ name, pin }),
 			});
+			if (res.status === 501) {
+				setLocalDevSession(name);
+				return true;
+			}
 			if (res.status === 409) {
 				loginError.value = 'That name is already taken';
 				return false;
@@ -55,6 +68,10 @@ export function useAuth() {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ name, pin }),
 			});
+			if (res.status === 501) {
+				setLocalDevSession(name);
+				return true;
+			}
 			if (res.status === 401) {
 				loginError.value = 'Invalid name or PIN';
 				return false;
@@ -105,7 +122,7 @@ export interface ServerSession {
 }
 
 export async function fetchServerSessions(): Promise<ServerSession[]> {
-	if (!playerToken.value) return [];
+	if (!playerToken.value || isDevSession.value) return [];
 	try {
 		const res = await fetch(`${SERVER_URL}/auth/sessions`, {
 			headers: authHeaders(),
@@ -125,7 +142,7 @@ export async function syncSessionToServer(
 	credentials: string,
 	pName: string,
 ) {
-	if (!playerToken.value) return;
+	if (!playerToken.value || isDevSession.value) return;
 	try {
 		await fetch(`${SERVER_URL}/auth/sessions`, {
 			method: 'POST',
@@ -136,7 +153,7 @@ export async function syncSessionToServer(
 }
 
 export async function deleteServerSession(gameName: string, matchID: string) {
-	if (!playerToken.value) return;
+	if (!playerToken.value || isDevSession.value) return;
 	try {
 		await fetch(`${SERVER_URL}/auth/sessions/${gameName}/${matchID}`, {
 			method: 'DELETE',
@@ -156,7 +173,7 @@ export interface AbandonVoteStatus {
 }
 
 export async function voteToAbandon(gameName: string, matchID: string): Promise<AbandonVoteStatus | null> {
-	if (!playerToken.value) return null;
+	if (!playerToken.value || isDevSession.value) return null;
 	try {
 		const res = await fetch(`${SERVER_URL}/auth/vote-abandon`, {
 			method: 'POST',
@@ -171,7 +188,7 @@ export async function voteToAbandon(gameName: string, matchID: string): Promise<
 }
 
 export async function cancelAbandonVote(gameName: string, matchID: string): Promise<void> {
-	if (!playerToken.value) return;
+	if (!playerToken.value || isDevSession.value) return;
 	try {
 		await fetch(`${SERVER_URL}/auth/vote-abandon/${gameName}/${matchID}`, {
 			method: 'DELETE',
@@ -181,7 +198,7 @@ export async function cancelAbandonVote(gameName: string, matchID: string): Prom
 }
 
 export async function getAbandonVoteStatus(gameName: string, matchID: string): Promise<AbandonVoteStatus | null> {
-	if (!playerToken.value) return null;
+	if (!playerToken.value || isDevSession.value) return null;
 	try {
 		const res = await fetch(`${SERVER_URL}/auth/vote-abandon/${gameName}/${matchID}`, {
 			headers: authHeaders(),
