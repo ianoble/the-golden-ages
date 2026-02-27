@@ -17,7 +17,7 @@ import {
 const props = defineProps<{ matchID: string; playerID: string }>();
 const router = useRouter();
 
-const { isConnected, isMyTurn, state, gameover, reconnecting, connect, disconnect } = useGame();
+const { isConnected, isMyTurn, state, currentPlayer, gameover, reconnecting, connect, disconnect } = useGame();
 
 const G = computed(() => state.value as unknown as GoldenAgesState | undefined);
 const currentEra = computed(() => G.value?.currentEra ?? "I");
@@ -38,7 +38,7 @@ const PLAYER_COLOR_TEXT: Record<string, string> = {
 
 const currentPlayerColor = computed(() => {
 	if (!G.value?.players) return null;
-	const cp = (state.value as unknown as { ctx?: { currentPlayer?: string } })?.ctx?.currentPlayer;
+	const cp = currentPlayer.value;
 	if (!cp) return null;
 	return G.value.players[cp]?.color ?? null;
 });
@@ -229,7 +229,7 @@ async function abandonGame() {
 							</a>
 						</div>
 					</div>
-					<div v-if="G" class="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-400 mb-0.5 md:mb-1">
+					<div v-if="G" class="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-400 mb-0.5 md:mb-1 min-h-5 md:min-h-6">
 						<span
 							>Era <strong class="text-white">{{ currentEra }}</strong></span
 						>
@@ -242,7 +242,7 @@ async function abandonGame() {
 						<template v-else-if="currentPlayerColor">
 							<span class="text-slate-600">·</span>
 							<span
-								class="px-1.5 py-0.5 rounded text-[10px] md:text-xs font-medium"
+								class="px-1.5 py-0.5 rounded text-[10px] md:text-xs font-medium leading-none"
 								:class="{
 									'bg-red-900/40 text-red-300': currentPlayerColor === 'red',
 									'bg-blue-900/40 text-blue-300': currentPlayerColor === 'blue',
@@ -269,7 +269,7 @@ async function abandonGame() {
 		</div>
 
 		<!-- Spacer for pinned header -->
-		<div class="h-20 md:h-16" />
+		<div class="h-24 md:h-20" />
 
 		<div class="w-full flex flex-col items-center p-2 md:p-6">
 			<!-- Game over banner -->

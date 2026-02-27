@@ -1636,6 +1636,9 @@ watch(activePrompt, (newVal) => {
 		</div>
 	</Teleport>
 
+	<!-- Spacer to push content below the fixed prompt banner -->
+	<div v-if="activePrompt" class="h-10 md:h-12" />
+
 	<div v-if="G?.board" class="flex flex-col items-center gap-4 md:gap-6 w-full max-w-5xl mx-auto px-2 md:px-0">
 		<!-- Tile placement controls -->
 		<div v-if="isTilePlacement && isMyTurn" class="flex items-center gap-4">

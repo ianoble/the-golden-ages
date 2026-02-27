@@ -119,7 +119,7 @@ export function useBotPlayers(matchID: Ref<string>, humanPlayerID: Ref<string>) 
 						if (G.phase === 'eraStart') {
 							client.moves.chooseCivCard(false);
 						} else if (G.phase === 'tilePlacement') {
-							const placement = findRandomValidPlacement(G, G.currentEra, bot.playerID);
+							const placement = findRandomValidPlacement(G, G.currentEra, pid);
 							if (placement) {
 								client.moves.placeTile(placement.row, placement.col, placement.rotation, false);
 							}
@@ -150,7 +150,7 @@ export function useBotPlayers(matchID: Ref<string>, humanPlayerID: Ref<string>) 
 					} finally {
 						acting = false;
 					}
-				}, 500);
+				}, 2000);
 			});
 
 			client.start();
