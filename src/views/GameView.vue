@@ -297,7 +297,7 @@ async function abandonGame() {
 			</div>
 
 			<!-- Game board -->
-			<GameBoard v-if="!reconnecting" :header-height="headerHeight" />
+			<GameBoard v-if="!reconnecting" :header-height="headerHeight" @back-to-lobby="router.push('/')" />
 		</div>
 
 		<!-- Abandon vote overlay (multi-human games) -->

@@ -415,25 +415,25 @@ export interface TileTemplate {
 const ALL_LAND: CellEdges = [L, L, L, L];
 
 export const L_TILE_TEMPLATES: TileTemplate[] = [
-	{ id: 1, resources: [['wheat'], ['wheat'], ['rock']], edges: [[W,W,L,W], [L,L,W,W], [L,L,W,L]] },
-	{ id: 2, resources: [['wheat'], ['game'], ['rock']], edges: [[L,L,L,L], [L,L,W,L], [L,W,W,L]] },
-	{ id: 3, resources: [['wheat'], ['rock'], ['rock']], edges: [[L,L,L,L], [L,L,W,W], [L,W,W,L]] },
-	{ id: 4, resources: [['rock'], ['game'], ['wheat']], edges: [[W,W,L,W], [L,L,L,W], [W,W,L,L]] },
+	{ id: 1, resources: [['wheat'], ['wheat'], ['rock']], edges: [[W, W, L, W], [L, L, W, W], [L, L, W, L]] },
+	{ id: 2, resources: [['wheat'], ['game'], ['rock']], edges: [[L, L, L, L], [L, L, W, L], [L, W, W, L]] },
+	{ id: 3, resources: [['wheat'], ['rock'], ['rock']], edges: [[L, L, L, L], [L, L, W, W], [L, W, W, L]] },
+	{ id: 4, resources: [['rock'], ['game'], ['wheat']], edges: [[W, W, L, W], [L, L, L, W], [W, W, L, L]] },
 ];
 
 export const DOMINO_TILE_TEMPLATES: TileTemplate[] = [
-	{ id: 5, resources: [['gem'], ['rock']], edges: [[L,L,L,L], [L,W,W,L]] },
-	{ id: 6, resources: [['game'], ['gem']], edges: [[W,L,L,L], [W,W,L,L]] },
-	{ id: 7, resources: [['rock'], ['gem']], edges: [[W,L,L,W], [W,W,L,L]] },
-	{ id: 8, resources: [['wheat'], ['gem']], edges: [[W,L,W,L], [L,W,W,L]] },
-	{ id: 9, resources: [['game', 'game'], ['gem']], edges: [[L,L,W,W], [W,W,W,L]] },
-	{ id: 10, resources: [['gem'], ['wheat']], edges: [[W,L,L,L], [W,L,L,L]] },
-	{ id: 11, resources: [['gem'], ['wheat']], edges: [[L,L,W,W], [L,W,W,L]] },
+	{ id: 5, resources: [['gem'], ['rock']], edges: [[L, L, L, L], [L, W, W, L]] },
+	{ id: 6, resources: [['game'], ['gem']], edges: [[W, L, L, L], [W, W, L, L]] },
+	{ id: 7, resources: [['rock'], ['gem']], edges: [[W, L, L, W], [W, W, L, L]] },
+	{ id: 8, resources: [['wheat'], ['gem']], edges: [[W, L, W, L], [L, W, W, L]] },
+	{ id: 9, resources: [['game', 'game'], ['gem']], edges: [[L, L, W, W], [W, W, W, L]] },
+	{ id: 10, resources: [['gem'], ['wheat']], edges: [[W, L, L, L], [W, L, L, L]] },
+	{ id: 11, resources: [['gem'], ['wheat']], edges: [[L, L, W, W], [L, W, W, L]] },
 	{ id: 12, resources: [['rock'], ['rock']], edges: [ALL_LAND, ALL_LAND] }, // all land confirmed
-	{ id: 13, resources: [['rock'], ['gem']], edges: [ALL_LAND, [L,W,L,L]] },
-	{ id: 14, resources: [['game', 'game'], ['gem']], edges: [[W,L,L,W], [W,W,W,L]] },
-	{ id: 15, resources: [['gem'], ['game']], edges: [[W,L,L,W], [W,W,L,L]] },
-	{ id: 16, resources: [['wheat'], ['wheat']], edges: [[W,L,W,W], [W,W,W,L]] },
+	{ id: 13, resources: [['rock'], ['gem']], edges: [ALL_LAND, [L, W, L, L]] },
+	{ id: 14, resources: [['game', 'game'], ['gem']], edges: [[W, L, L, W], [W, W, W, L]] },
+	{ id: 15, resources: [['gem'], ['game']], edges: [[W, L, L, W], [W, W, L, L]] },
+	{ id: 16, resources: [['wheat'], ['wheat']], edges: [[W, L, W, W], [W, W, W, L]] },
 ];
 
 export const BOARD_RESOURCES: Record<string, ResourceType[]> = {
@@ -1521,20 +1521,20 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			if (G.currentEra !== 'I') {
 				const player = G.players[ctx.currentPlayer];
 				const dominoTile = player?.assignedDominoTiles?.[G.currentEra];
-			if (dominoTile) {
-				for (let idx = 0; idx < rotated.length; idx++) {
-					const cellRow = anchorRow + rotated[idx][0];
-					const cellCol = anchorCol + rotated[idx][1];
-					const key = `${cellRow},${cellCol}`;
-					const res = dominoTile.resources[idx];
-					if (res && res.length > 0) {
-						G.boardResources[key] = res;
-					} else {
-						delete G.boardResources[key];
+				if (dominoTile) {
+					for (let idx = 0; idx < rotated.length; idx++) {
+						const cellRow = anchorRow + rotated[idx][0];
+						const cellCol = anchorCol + rotated[idx][1];
+						const key = `${cellRow},${cellCol}`;
+						const res = dominoTile.resources[idx];
+						if (res && res.length > 0) {
+							G.boardResources[key] = res;
+						} else {
+							delete G.boardResources[key];
+						}
 					}
+					player.assignedDominoTiles[G.currentEra] = null;
 				}
-				player.assignedDominoTiles[G.currentEra] = null;
-			}
 			}
 
 			G.tilesPlacedThisEra++;
@@ -1599,13 +1599,11 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 					const hasConstruction = player.researchedTechs[2][2];
 					const cubeCost = hasConstruction ? 2 : 1;
-					console.log('[FOUND CITY] researchedTechs row 2:', JSON.stringify(player.researchedTechs[2]), 'hasConstruction:', hasConstruction, 'cubeCost:', cubeCost, 'player.cubes:', player.cubes);
 					if (player.cubes < cubeCost) return INVALID_MOVE;
 
 					player.cubes -= cubeCost;
 					const newCity = { owner: ctx.currentPlayer, row: destRow, col: destCol, cubes: cubeCost };
 					G.cities.push(newCity);
-					console.log('[FOUND CITY] pushed city with cubes:', cubeCost);
 					try {
 						Object.defineProperty(newCity, 'cubes', {
 							get() { return cubeCost; },
@@ -1870,60 +1868,60 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					const slotIndex = rawIndex;
 					if (slotIndex < 0 || slotIndex >= 3) return INVALID_MOVE;
 
-				const card = player.builtBuildings[slotIndex];
-				if (!card || !card.buildingType) return INVALID_MOVE;
-				if (player.activatedBuildings[slotIndex]) return INVALID_MOVE;
+					const card = player.builtBuildings[slotIndex];
+					if (!card || !card.buildingType) return INVALID_MOVE;
+					if (player.activatedBuildings[slotIndex]) return INVALID_MOVE;
 
-				player.activatedBuildings[slotIndex] = true;
+					player.activatedBuildings[slotIndex] = true;
 
-				if (card.buildingType === 'market') {
-					const workersInAgora = G.pieces.filter((p) => p.type === 'worker' && p.inAgora).length;
-					player.gold += workersInAgora;
-				} else if (card.buildingType === 'granary') {
-					const myWorkers = G.pieces.filter(
-						(p) => p.type === 'worker' && p.owner === ctx.currentPlayer && !p.exhausted && !p.inAgora,
-					);
-					player.gold += myWorkers.length;
-				} else if (card.buildingType === 'bank') {
-					player.gold += 4;
-				} else if (card.buildingType === 'museum') {
-					player.gold += 6;
-				} else if (card.buildingType === 'library' || card.buildingType === 'university' || card.buildingType === 'observatory' || card.buildingType === 'laboratory') {
-					const discounts: Record<string, number> = { library: 2, university: 3, observatory: 5, laboratory: 99 };
-					const discount = discounts[card.buildingType] ?? 0;
-					const techRow = argB as number;
-					const techCol = argC as unknown as number;
-					if (techRow === undefined || techCol === undefined) return INVALID_MOVE;
-					if (techRow < 0 || techRow >= TECH_TREE.length || techCol < 1 || techCol >= TECH_TREE[0].length) return INVALID_MOVE;
-					if (player.researchedTechs[techRow][techCol]) return INVALID_MOVE;
-					if (!player.researchedTechs[techRow][techCol - 1]) return INVALID_MOVE;
-					const cost = Math.max(0, TECH_COSTS[techCol] - discount);
-					if (player.gold < cost) return INVALID_MOVE;
-					player.gold -= cost;
-					player.researchedTechs[techRow][techCol] = true;
-					const cubeKey: `${number},${number}` = `${techRow + 1},${techCol + 1}`;
-					if (player.boardCubes[cubeKey]) {
-						player.cubes += player.boardCubes[cubeKey];
-						delete player.boardCubes[cubeKey];
+					if (card.buildingType === 'market') {
+						const workersInAgora = G.pieces.filter((p) => p.type === 'worker' && p.inAgora).length;
+						player.gold += workersInAgora;
+					} else if (card.buildingType === 'granary') {
+						const myWorkers = G.pieces.filter(
+							(p) => p.type === 'worker' && p.owner === ctx.currentPlayer && !p.exhausted && !p.inAgora,
+						);
+						player.gold += myWorkers.length;
+					} else if (card.buildingType === 'bank') {
+						player.gold += 4;
+					} else if (card.buildingType === 'museum') {
+						player.gold += 6;
+					} else if (card.buildingType === 'library' || card.buildingType === 'university' || card.buildingType === 'observatory' || card.buildingType === 'laboratory') {
+						const discounts: Record<string, number> = { library: 2, university: 3, observatory: 5, laboratory: 99 };
+						const discount = discounts[card.buildingType] ?? 0;
+						const techRow = argB as number;
+						const techCol = argC as unknown as number;
+						if (techRow === undefined || techCol === undefined) return INVALID_MOVE;
+						if (techRow < 0 || techRow >= TECH_TREE.length || techCol < 1 || techCol >= TECH_TREE[0].length) return INVALID_MOVE;
+						if (player.researchedTechs[techRow][techCol]) return INVALID_MOVE;
+						if (!player.researchedTechs[techRow][techCol - 1]) return INVALID_MOVE;
+						const cost = Math.max(0, TECH_COSTS[techCol] - discount);
+						if (player.gold < cost) return INVALID_MOVE;
+						player.gold -= cost;
+						player.researchedTechs[techRow][techCol] = true;
+						const cubeKey: `${number},${number}` = `${techRow + 1},${techCol + 1}`;
+						if (player.boardCubes[cubeKey]) {
+							player.cubes += player.boardCubes[cubeKey];
+							delete player.boardCubes[cubeKey];
+						}
+						applyImmediateTechEffects(G, player, techRow, techCol);
+					} else if (card.buildingType === 'factory') {
+						const workerId = argB as unknown as string;
+						if (!workerId) return INVALID_MOVE;
+						const worker = G.pieces.find((p) => p.id === workerId);
+						if (!worker || worker.type !== 'worker' || worker.owner !== ctx.currentPlayer) return INVALID_MOVE;
+						if (!worker.exhausted || worker.inAgora) return INVALID_MOVE;
+						worker.exhausted = false;
+					} else if (card.buildingType === 'movieTheater') {
+						const workersInAgora = G.pieces.filter((p) => p.type === 'worker' && p.inAgora).length;
+						player.score += workersInAgora * 2;
+					} else if (card.buildingType === 'central') {
+						const myCities = G.cities.filter((c) => c.owner === ctx.currentPlayer).length;
+						const hasCapital = G.pieces.some((p) => p.type === 'capital' && p.owner === ctx.currentPlayer);
+						player.gold += (myCities + (hasCapital ? 1 : 0)) * 2;
+					} else if (card.buildingType === 'wall') {
+						return INVALID_MOVE;
 					}
-					applyImmediateTechEffects(G, player, techRow, techCol);
-				} else if (card.buildingType === 'factory') {
-					const workerId = argB as unknown as string;
-					if (!workerId) return INVALID_MOVE;
-					const worker = G.pieces.find((p) => p.id === workerId);
-					if (!worker || worker.type !== 'worker' || worker.owner !== ctx.currentPlayer) return INVALID_MOVE;
-					if (!worker.exhausted || worker.inAgora) return INVALID_MOVE;
-					worker.exhausted = false;
-				} else if (card.buildingType === 'movieTheater') {
-					const workersInAgora = G.pieces.filter((p) => p.type === 'worker' && p.inAgora).length;
-					player.score += workersInAgora * 2;
-				} else if (card.buildingType === 'central') {
-					const myCities = G.cities.filter((c) => c.owner === ctx.currentPlayer).length;
-					const hasCapital = G.pieces.some((p) => p.type === 'capital' && p.owner === ctx.currentPlayer);
-					player.gold += (myCities + (hasCapital ? 1 : 0)) * 2;
-				} else if (card.buildingType === 'wall') {
-					return INVALID_MOVE;
-				}
 				}
 			} else if (actionType === 'startGoldenAge') {
 				const standingWorkers = G.pieces.filter(

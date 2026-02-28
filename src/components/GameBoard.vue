@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, nextTick } from "vue";
 import { useGame, SquareGrid, getTileAt, rotateTileOffsets, type TileRotation } from "@noble/bg-engine/client";
 import {
 	IconChevronRight,
@@ -24,6 +24,7 @@ import {
 } from "@tabler/icons-vue";
 
 const props = withDefaults(defineProps<{ headerHeight?: number }>(), { headerHeight: 72 });
+const emit = defineEmits<{ backToLobby: [] }>();
 import {
 	gameDef,
 	ERA_TILE_SHAPES,
@@ -477,9 +478,6 @@ function piecesAt(row: number, col: number): BoardPiece[] {
 function citiesAt(row: number, col: number): BoardCity[] {
 	if (!G.value?.cities) return [];
 	const result = G.value.cities.filter((c) => c.row === row && c.col === col);
-	if (result.length > 0) {
-		console.log(`[citiesAt ${row},${col}]`, result.length, 'cities:', JSON.stringify(result.map(c => ({ owner: c.owner, cubes: c.cubes }))));
-	}
 	return result;
 }
 
@@ -674,6 +672,7 @@ const playersAtTrackPosition = computed(() => {
 	return map;
 });
 
+const gameOverDismissed = ref(false);
 const gameIsOver = computed(() => G.value?.endGameScored === true);
 
 const finalRankings = computed(() => {
@@ -947,6 +946,7 @@ function onAction(actionType: ActionType) {
 	}
 	if (actionType === "developTechnology") {
 		selectingTech.value = true;
+		scrollToTechGrid();
 		return;
 	}
 	if (actionType === "explorer") {
@@ -1008,6 +1008,13 @@ function onCancelHistoryPick() {
 }
 
 const selectingTech = ref(false);
+const techGridEl = ref<HTMLElement | null>(null);
+
+function scrollToTechGrid() {
+	nextTick(() => {
+		techGridEl.value?.scrollIntoView({ behavior: "smooth", block: "center" });
+	});
+}
 
 const PLAYER_RESEARCHED_STYLES: Record<string, { bg: string; border: string }> = {
 	red: { bg: "#1f1d2b", border: "#9b4d4d" },
@@ -1630,6 +1637,7 @@ function proceedBuildWonder(cardId: string, useGreeceFree: boolean) {
 		greatLibraryTechPending.value = cardId;
 		greeceWonderUseFree.value = useGreeceFree;
 		selectingTech.value = true;
+		scrollToTechGrid();
 		return;
 	}
 
@@ -1638,6 +1646,7 @@ function proceedBuildWonder(cardId: string, useGreeceFree: boolean) {
 		greeceWonderUseFree.value = useGreeceFree;
 		oxfordTechQueue.value = [];
 		selectingTech.value = true;
+		scrollToTechGrid();
 		return;
 	}
 
@@ -2299,7 +2308,9 @@ watch(activePrompt, (newVal) => {
 														class="w-3 h-3 rounded-[2px] flex items-center justify-center text-[6px] text-white font-bold"
 														:class="CUBE_BG_CLASSES[PLAYER_COLORS[parseInt(city.owner, 10)]]"
 														:title="`City cube ${n}/${city.cubes} (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
-													>{{ n }}</div>
+													>
+														{{ n }}
+													</div>
 												</template>
 											</div>
 
@@ -2838,7 +2849,7 @@ watch(activePrompt, (newVal) => {
 			</div>
 
 			<!-- Grid area: 5 cols x 4 rows -->
-			<div class="p-2 md:p-4 overflow-x-auto">
+			<div ref="techGridEl" class="p-2 md:p-4 overflow-x-auto">
 				<div class="grid gap-1 min-w-[480px]" style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 85px)">
 					<template v-for="(row, rIdx) in TECH_TREE" :key="`row-${rIdx}`">
 						<div
@@ -2947,7 +2958,7 @@ watch(activePrompt, (newVal) => {
 	</div>
 
 	<!-- Game Over overlay -->
-	<div v-if="gameIsOver" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center">
+	<div v-if="gameIsOver && !gameOverDismissed" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center">
 		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
 			<h2 class="text-2xl font-bold text-amber-300 text-center mb-6">Game Over</h2>
 			<div class="space-y-3">
@@ -2969,6 +2980,20 @@ watch(activePrompt, (newVal) => {
 						<span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
 					</div>
 				</div>
+			</div>
+			<div class="flex justify-center gap-3 mt-6">
+				<button
+					class="px-5 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors cursor-pointer"
+					@click="$emit('backToLobby')"
+				>
+					Back to Lobby
+				</button>
+				<button
+					class="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium transition-colors cursor-pointer"
+					@click="gameOverDismissed = true"
+				>
+					View Board
+				</button>
 			</div>
 		</div>
 	</div>
