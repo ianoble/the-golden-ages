@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:engine": "npx tsc --project noble-bg-engine/packages/engine/tsconfig.json",
+    "build:engine": "npx tsc --project ../noble-bg-engine/packages/engine/tsconfig.json",
     "build": "npm run build:engine && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@noble/bg-engine": "file:noble-bg-engine/packages/engine",
+    "@noble/bg-engine": "file:../noble-bg-engine/packages/engine",
     "@tabler/icons-vue": "^3.37.1",
     "boardgame.io": "^0.50.2",
     "lucide-vue-next": "^0.575.0",

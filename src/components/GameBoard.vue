@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from "vue";
+import { ref, computed, watch, nextTick, onUnmounted } from "vue";
 import { useGame, SquareGrid, getTileAt, rotateTileOffsets, type TileRotation } from "@noble/bg-engine/client";
 import {
 	IconChevronRight,
@@ -680,6 +680,51 @@ const finalRankings = computed(() => {
 	return getPlayerRankings(G.value);
 });
 
+// End game: reveal scores one-by-one in fixed order (by playerId) so winner is a surprise
+const playersInRevealOrder = computed(() => {
+	if (!G.value?.players) return [];
+	const order = Object.keys(G.value.players).sort();
+	return order.map((pid) => {
+		const cityCount = G.value!.cities.filter((c) => c.owner === pid).length;
+		return { playerId: pid, score: G.value!.players[pid].score, cities: cityCount };
+	});
+});
+const revealedScoresCount = ref(0);
+let revealInterval: ReturnType<typeof setInterval> | null = null;
+
+watch(
+	() => gameIsOver.value && !gameOverDismissed.value,
+	(isShowing) => {
+		if (!isShowing) {
+			revealedScoresCount.value = 0;
+			if (revealInterval) {
+				clearInterval(revealInterval);
+				revealInterval = null;
+			}
+			return;
+		}
+		revealedScoresCount.value = 0;
+		const total = playersInRevealOrder.value.length;
+		if (total === 0) return;
+		if (revealInterval) clearInterval(revealInterval);
+		revealInterval = setInterval(() => {
+			revealedScoresCount.value += 1;
+			if (revealedScoresCount.value >= total) {
+				if (revealInterval) clearInterval(revealInterval);
+				revealInterval = null;
+			}
+		}, 1400);
+	},
+	{ immediate: true }
+);
+onUnmounted(() => {
+	if (revealInterval) clearInterval(revealInterval);
+});
+
+const allScoresRevealed = computed(
+	() => playersInRevealOrder.value.length > 0 && revealedScoresCount.value >= playersInRevealOrder.value.length
+);
+
 // ---------------------------------------------------------------------------
 // Card deck display (only Wonder and Building remain)
 // ---------------------------------------------------------------------------
@@ -879,6 +924,23 @@ function canDoAction(actionType: ActionType): boolean {
 		!selectingWonder.value &&
 		isActionAvailable(actionType)
 	);
+}
+
+const availableActionTypes = computed(() =>
+	ACTION_TYPES.filter((a) => canDoAction(a.type)).map((a) => a.type)
+);
+const isGoldenAgeOnlyOption = computed(
+	() =>
+		availableActionTypes.value.length === 1 &&
+		availableActionTypes.value[0] === "startGoldenAge"
+);
+const goldenAgeOnlyPromptDismissed = ref(false);
+watch(currentPlayerId, () => {
+	goldenAgeOnlyPromptDismissed.value = false;
+});
+function dismissGoldenAgeOnlyPrompt() {
+	goldenAgeOnlyPromptDismissed.value = true;
+	confirmGoldenAge.value = true;
 }
 
 function isWorkerSelectable(piece: BoardPiece): boolean {
@@ -1738,6 +1800,7 @@ type PromptType =
 	| "collectIncome"
 	| "pickHistory"
 	| "confirmGoldenAge"
+	| "goldenAgeOnly"
 	| "soldierAttack"
 	| "soldierCity"
 	| "indiaSelect"
@@ -1753,6 +1816,14 @@ const activePrompt = computed((): PromptType | null => {
 	if (greeceWonderPending.value !== null) return "greeceWonder";
 	if (isActionPhase.value && isMyTurn.value && confirmGoldenAge.value) return "confirmGoldenAge";
 	if (isActionPhase.value && isMyTurn.value && pickingHistoryCard.value) return "pickHistory";
+	if (
+		isActionPhase.value &&
+		isMyTurn.value &&
+		!myPassedThisEra.value &&
+		isGoldenAgeOnlyOption.value &&
+		!goldenAgeOnlyPromptDismissed.value
+	)
+		return "goldenAgeOnly";
 	if (isActionPhase.value && isMyTurn.value && myPassedThisEra.value) return "collectIncome";
 	return null;
 });
@@ -1884,6 +1955,19 @@ watch(activePrompt, (newVal) => {
 					</button>
 					<button class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer" @click="onCancelGreeceChoice">
 						Cancel
+					</button>
+				</template>
+
+				<!-- Golden Age only option info -->
+				<template v-else-if="activePrompt === 'goldenAgeOnly'">
+					<p class="text-xs md:text-sm text-slate-200 font-medium">
+						Your only available action is to start a Golden Age.
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						@click="dismissGoldenAgeOnlyPrompt"
+					>
+						OK
 					</button>
 				</template>
 
@@ -2957,19 +3041,52 @@ watch(activePrompt, (newVal) => {
 		</div>
 	</div>
 
-	<!-- Game Over overlay -->
+	<!-- Game Over overlay: reveal scores one-by-one, then show final standings -->
 	<div v-if="gameIsOver && !gameOverDismissed" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center">
 		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
-			<h2 class="text-2xl font-bold text-amber-300 text-center mb-6">Game Over</h2>
-			<div class="space-y-3">
+			<h2 class="text-2xl font-bold text-amber-300 text-center mb-2">Game Over</h2>
+			<p v-if="!allScoresRevealed" class="text-slate-400 text-sm text-center mb-6">Revealing scores…</p>
+			<p v-else class="text-amber-200/90 text-sm text-center mb-6 font-medium">Final standings</p>
+
+			<!-- Phase 1: reveal order — one score at a time -->
+			<div v-if="!allScoresRevealed" class="space-y-3">
+				<div
+					v-for="(r, idx) in playersInRevealOrder"
+					:key="r.playerId"
+					class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
+					:class="idx < revealedScoresCount ? 'bg-slate-700/60 border border-slate-500/40' : 'bg-slate-800/60 border border-slate-600/20'"
+				>
+					<span class="text-lg font-bold w-7 text-center text-slate-500">{{ idx + 1 }}</span>
+					<div class="w-4 h-4 rounded-full shrink-0" :class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]" />
+					<span class="font-medium capitalize flex-1" :class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]">
+						{{ G!.players[r.playerId].color }}
+					</span>
+					<div class="text-right min-w-[100px]">
+						<Transition name="score-reveal" mode="out-in">
+							<span
+								v-if="idx < revealedScoresCount"
+								key="score"
+								class="text-lg font-bold text-slate-200 tabular-nums"
+							>
+								{{ r.score }} VP
+								<span class="text-xs text-slate-500 ml-1 font-normal">({{ r.cities }} cities)</span>
+							</span>
+							<span v-else key="hidden" class="text-slate-500 text-lg">—</span>
+						</Transition>
+					</div>
+				</div>
+			</div>
+
+			<!-- Phase 2: final rankings with winner highlight -->
+			<div v-else class="space-y-3">
 				<div
 					v-for="(r, idx) in finalRankings"
 					:key="r.playerId"
-					class="flex items-center gap-3 p-3 rounded-lg"
+					class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
 					:class="idx === 0 ? 'bg-amber-900/40 border border-amber-600/40' : 'bg-slate-700/40 border border-slate-600/30'"
 				>
 					<span class="text-lg font-bold w-7 text-center" :class="idx === 0 ? 'text-amber-300' : 'text-slate-400'">
-						{{ idx + 1 }}
+						{{ idx === 0 ? '★' : idx + 1 }}
 					</span>
 					<div class="w-4 h-4 rounded-full shrink-0" :class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]" />
 					<span class="font-medium capitalize flex-1" :class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]">
@@ -2981,6 +3098,7 @@ watch(activePrompt, (newVal) => {
 					</div>
 				</div>
 			</div>
+
 			<div class="flex justify-center gap-3 mt-6">
 				<button
 					class="px-5 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors cursor-pointer"
@@ -2998,3 +3116,18 @@ watch(activePrompt, (newVal) => {
 		</div>
 	</div>
 </template>
+
+<style scoped>
+.score-reveal-enter-active,
+.score-reveal-leave-active {
+	transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.score-reveal-enter-from {
+	opacity: 0;
+	transform: scale(0.95);
+}
+.score-reveal-leave-to {
+	opacity: 0;
+	transform: scale(1.02);
+}
+</style>
