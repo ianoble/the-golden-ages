@@ -1914,6 +1914,69 @@ watch(activePrompt, (newVal) => {
 </script>
 
 <template>
+  <!-- Game log flyout from the left -->
+  <Teleport to="body">
+    <div class="fixed left-0 top-0 bottom-0 z-20 flex pointer-events-none">
+      <!-- Tab to open (always visible when panel closed) -->
+      <button
+        type="button"
+        class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-24 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
+        :class="gameLogOpen ? 'opacity-0 pointer-events-none' : ''"
+        title="Open game log"
+        @click="gameLogOpen = true"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      </button>
+      <!-- Backdrop when open -->
+      <div
+        v-show="gameLogOpen"
+        class="pointer-events-auto fixed inset-0 bg-black/40 transition-opacity"
+        aria-hidden="true"
+        @click="gameLogOpen = false"
+      />
+      <!-- Sliding panel -->
+      <Transition name="log-slide">
+        <div
+          v-show="gameLogOpen"
+          class="pointer-events-auto absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] flex flex-col bg-slate-800 border-r border-slate-600/60 shadow-xl"
+        >
+          <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-600/50 shrink-0">
+            <h3 class="text-sm font-semibold text-slate-200">Game log</h3>
+            <span class="text-slate-500 text-xs">{{ gameLogEntries.length }} entries</span>
+            <button
+              type="button"
+              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+              title="Close"
+              @click="gameLogOpen = false"
+            >
+              <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          <div class="overflow-y-auto flex-1 min-h-0 p-2 space-y-1 text-xs">
+            <template v-if="gameLogEntries.length === 0">
+              <p class="text-slate-500 italic py-4">No actions yet.</p>
+            </template>
+            <div
+              v-for="(entry, i) in [...gameLogEntries].reverse()"
+              :key="`log-${i}-${entry.message}`"
+              class="py-1.5 px-2 rounded bg-slate-700/50"
+              style="color: #cbd5e1"
+            >
+              <span
+                v-if="entry.playerColor"
+                class="capitalize font-medium"
+                :style="{ color: PLAYER_COLOR_HEX[entry.playerColor] ?? '#cbd5e1' }"
+              >{{ entry.playerColor }}: </span>
+              <span>{{ entry.message }}</span>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </div>
+  </Teleport>
+
   <!-- Pinned prompt banner (fixed below header) -->
   <Teleport to="body">
     <div
@@ -2787,55 +2850,6 @@ watch(activePrompt, (newVal) => {
           </div>
         </div>
       </div>
-
-      <!-- Game log (collapsible) -->
-      <div class="order-4 w-full md:max-w-xs shrink-0 flex flex-col">
-        <button
-          type="button"
-          class="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600/50 text-left text-sm font-medium text-slate-300 hover:bg-slate-700/80 hover:text-slate-200 transition-colors"
-          @click="gameLogOpen = !gameLogOpen"
-        >
-          <span>Game log</span>
-          <span class="text-slate-500 text-xs">{{ gameLogEntries.length }} entries</span>
-          <svg
-            class="w-4 h-4 text-slate-500 transition-transform"
-            :class="gameLogOpen ? 'rotate-180' : ''"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-        <div
-          v-show="gameLogOpen"
-          class="mt-2 rounded-lg border border-slate-600/50 bg-slate-800/90 overflow-hidden flex flex-col max-h-48"
-        >
-          <div class="overflow-y-auto flex-1 min-h-0 p-2 space-y-1 text-xs">
-            <template v-if="gameLogEntries.length === 0">
-              <p class="text-slate-500 italic py-2">
-                No actions yet.
-              </p>
-            </template>
-            <div
-              v-for="(entry, i) in [...gameLogEntries].reverse()"
-              :key="`log-${i}-${entry.message}`"
-              class="py-1 px-2 rounded bg-slate-700/50"
-              style="color: #cbd5e1"
-            >
-              <span
-                v-if="entry.playerColor"
-                class="capitalize font-medium"
-                :style="{ color: PLAYER_COLOR_HEX[entry.playerColor] ?? '#cbd5e1' }"
-              >{{ entry.playerColor }}: </span>
-              <span>{{ entry.message }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Player Board -->
@@ -3588,5 +3602,14 @@ watch(activePrompt, (newVal) => {
 .score-reveal-leave-to {
 	opacity: 0;
 	transform: scale(1.02);
+}
+
+.log-slide-enter-active,
+.log-slide-leave-active {
+	transition: transform 0.25s ease-out;
+}
+.log-slide-enter-from,
+.log-slide-leave-to {
+	transform: translateX(-100%);
 }
 </style>

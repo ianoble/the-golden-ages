@@ -43,6 +43,14 @@ const currentPlayerColor = computed(() => {
 	return G.value.players[cp]?.color ?? null;
 });
 
+const notificationsSupported = computed(
+	() => typeof window !== "undefined" && "Notification" in window
+);
+const notificationPermission = ref<NotificationPermission>("denied");
+function syncNotificationPermission() {
+	if (notificationsSupported.value) notificationPermission.value = Notification.permission;
+}
+
 const headerEl = ref<HTMLElement | null>(null);
 const headerHeight = ref(72);
 
@@ -51,6 +59,100 @@ function measureHeader() {
 		headerHeight.value = headerEl.value.offsetHeight;
 	}
 }
+
+// "Your turn" / phase change cue: brief banner + reserved slot for sound
+const turnCueMessage = ref("");
+const turnCueVisible = ref(false);
+const prevIsMyTurn = ref(false);
+const prevPhase = ref<GamePhase | undefined>(undefined);
+let cueTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const CUE_DURATION_MS = 2500;
+
+function showTurnNotificationIfAllowed() {
+	if (typeof window === "undefined" || !("Notification" in window)) return;
+	if (!document.hidden) return;
+	if (Notification.permission !== "granted") return;
+
+	try {
+		const n = new Notification(gameDef.displayName, {
+			body: "It's your turn!",
+			icon: "/favicon.ico",
+			tag: "tga-turn",
+			requireInteraction: false,
+		});
+		n.onclick = () => {
+			window.focus();
+			n.close();
+		};
+	} catch {
+		// Ignore if notification fails (e.g. in some iframes)
+	}
+}
+
+function requestTurnNotifications() {
+	if (typeof window === "undefined" || !("Notification" in window)) return;
+	if (Notification.permission === "granted") return;
+	if (Notification.permission === "denied") return;
+
+	Notification.requestPermission().then((permission) => {
+		syncNotificationPermission();
+		if (permission === "granted") {
+			try {
+				const n = new Notification(gameDef.displayName, {
+					body: "You'll get notified when it's your turn.",
+					icon: "/favicon.ico",
+					tag: "tga-notify-on",
+				});
+				setTimeout(() => n.close(), 4000);
+			} catch {
+				// ignore
+			}
+		}
+	});
+}
+
+watch(
+	[isMyTurn, currentPhase],
+	([newTurn, newPhase]) => {
+		if (gameover.value || reconnecting.value) return;
+		const wasMyTurn = prevIsMyTurn.value;
+		const wasPhase = prevPhase.value;
+		prevIsMyTurn.value = newTurn;
+		prevPhase.value = newPhase;
+
+		if (cueTimeout) clearTimeout(cueTimeout);
+		cueTimeout = null;
+
+		// Hide cue immediately when turn or phase ends (e.g. you finished your turn)
+		if (!newTurn || newPhase !== wasPhase) {
+			turnCueVisible.value = false;
+		}
+
+		// Skip showing new cue on first run (no previous state)
+		if (wasPhase === undefined) return;
+
+		if (newTurn && !wasMyTurn) {
+			turnCueMessage.value = "Your turn!";
+			turnCueVisible.value = true;
+			cueTimeout = setTimeout(() => {
+				turnCueVisible.value = false;
+				cueTimeout = null;
+			}, CUE_DURATION_MS);
+			// Browser notification when tab is in background
+			showTurnNotificationIfAllowed();
+		} else if (newPhase !== wasPhase) {
+			turnCueMessage.value = PHASE_LABELS[newPhase];
+			turnCueVisible.value = true;
+			cueTimeout = setTimeout(() => {
+				turnCueVisible.value = false;
+				cueTimeout = null;
+			}, CUE_DURATION_MS);
+		}
+	},
+	{ immediate: true }
+);
+
 
 const confirmingAbandon = ref(false);
 const gameMenuOpen = ref(false);
@@ -115,11 +217,15 @@ onMounted(() => {
 	startVotePolling();
 	document.addEventListener('click', onClickOutsideMenu);
 	nextTick(measureHeader);
+	syncNotificationPermission();
+	// Ask for notification permission after a short delay so user can allow before switching tabs
+	setTimeout(requestTurnNotifications, 2000);
 });
 
 watch([isMyTurn, currentPlayerColor, currentPhase], () => nextTick(measureHeader));
 
 onUnmounted(() => {
+	if (cueTimeout) clearTimeout(cueTimeout);
 	disconnect();
 	stopVotePolling();
 	document.removeEventListener('click', onClickOutsideMenu);
@@ -239,6 +345,22 @@ async function abandonGame() {
 								Card Index
 								<svg class="w-3 h-3 ml-auto text-slate-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17h-8.5A2.25 2.25 0 012 14.75v-8.5A2.25 2.25 0 014.25 4h5a.75.75 0 010 1.5h-5zm7.5-2.25a.75.75 0 01.75-.75h4.5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0V5.56l-5.72 5.72a.75.75 0 11-1.06-1.06l5.72-5.72h-2.69a.75.75 0 01-.75-.75z" clip-rule="evenodd" /></svg>
 							</a>
+							<button
+								v-if="notificationsSupported && notificationPermission !== 'granted'"
+								type="button"
+								class="flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors w-full text-left border-t border-slate-700/50"
+								@click="requestTurnNotifications(); closeGameMenu()"
+							>
+								<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+								Notify when it's my turn
+							</button>
+							<p
+								v-else-if="notificationsSupported && notificationPermission === 'granted'"
+								class="flex items-center gap-2 px-4 py-2 text-sm text-emerald-400/90 border-t border-slate-700/50"
+							>
+								<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+								Turn notifications on
+							</p>
 						</div>
 					</div>
 					<div v-if="G" class="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-400 mb-0.5 md:mb-1 min-h-5 md:min-h-6">
@@ -282,6 +404,27 @@ async function abandonGame() {
 
 		<!-- Spacer for pinned header -->
 		<div :style="{ height: headerHeight + 8 + 'px' }" />
+
+		<!-- Your turn / phase change cue (data-cue="turn" | "phase" for optional sound) -->
+		<Transition name="cue-fade">
+			<div
+				v-if="turnCueVisible && turnCueMessage"
+				class="fixed left-0 right-0 z-20 flex justify-center pointer-events-none"
+				:style="{ top: headerHeight + 12 + 'px' }"
+				:data-cue="turnCueMessage === 'Your turn!' ? 'turn' : 'phase'"
+			>
+				<div
+					class="px-6 py-2.5 rounded-lg shadow-lg border font-semibold text-center text-sm md:text-base"
+					:class="
+						turnCueMessage === 'Your turn!'
+							? 'bg-emerald-900/95 border-emerald-500/60 text-emerald-200'
+							: 'bg-amber-900/95 border-amber-500/60 text-amber-200'
+					"
+				>
+					{{ turnCueMessage }}
+				</div>
+			</div>
+		</Transition>
 
 		<div class="w-full flex flex-col items-center p-2 md:p-6">
 			<!-- Game over banner -->
@@ -374,3 +517,14 @@ async function abandonGame() {
 		</Teleport>
 	</div>
 </template>
+
+<style scoped>
+.cue-fade-enter-active,
+.cue-fade-leave-active {
+	transition: opacity 0.3s ease;
+}
+.cue-fade-enter-from,
+.cue-fade-leave-to {
+	opacity: 0;
+}
+</style>
