@@ -1597,12 +1597,21 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						G.cities.some((c) => c.row === destRow && c.col === destCol);
 					if (hasCapitalOrCity) return INVALID_MOVE;
 
-					const hasConstruction = player.researchedTechs[2][1];
+					const hasConstruction = player.researchedTechs[2][2];
 					const cubeCost = hasConstruction ? 2 : 1;
+					console.log('[FOUND CITY] researchedTechs row 2:', JSON.stringify(player.researchedTechs[2]), 'hasConstruction:', hasConstruction, 'cubeCost:', cubeCost, 'player.cubes:', player.cubes);
 					if (player.cubes < cubeCost) return INVALID_MOVE;
 
 					player.cubes -= cubeCost;
-					G.cities.push({ owner: ctx.currentPlayer, row: destRow, col: destCol, cubes: cubeCost });
+					const newCity = { owner: ctx.currentPlayer, row: destRow, col: destCol, cubes: cubeCost };
+					G.cities.push(newCity);
+					console.log('[FOUND CITY] pushed city with cubes:', cubeCost);
+					try {
+						Object.defineProperty(newCity, 'cubes', {
+							get() { return cubeCost; },
+							set(v: number) { console.trace('[FOUND CITY] cubes MUTATED to', v); },
+						});
+					} catch (e) { /* immer proxy may block this */ }
 
 					const cubesPlaced = cubeCost;
 					for (let i = 0; i < cubesPlaced; i++) {
@@ -1710,7 +1719,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						G.cities.some((c) => c.row === destRow && c.col === destCol);
 					if (hasCapitalOrCity) return INVALID_MOVE;
 
-					const hasConstruction = player.researchedTechs[2][1];
+					const hasConstruction = player.researchedTechs[2][2];
 					const cubeCost = hasConstruction ? 2 : 1;
 					if (player.cubes < cubeCost) return INVALID_MOVE;
 

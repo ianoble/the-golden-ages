@@ -476,7 +476,11 @@ function piecesAt(row: number, col: number): BoardPiece[] {
 
 function citiesAt(row: number, col: number): BoardCity[] {
 	if (!G.value?.cities) return [];
-	return G.value.cities.filter((c) => c.row === row && c.col === col);
+	const result = G.value.cities.filter((c) => c.row === row && c.col === col);
+	if (result.length > 0) {
+		console.log(`[citiesAt ${row},${col}]`, result.length, 'cities:', JSON.stringify(result.map(c => ({ owner: c.owner, cubes: c.cubes }))));
+	}
+	return result;
 }
 
 function pieceColor(piece: BoardPiece): PlayerColor {
@@ -934,10 +938,11 @@ const isFirstGoldenAge = computed(() => {
 });
 
 const pickingHistoryCard = ref(false);
+const confirmGoldenAge = ref(false);
 
 function onAction(actionType: ActionType) {
-	if (actionType === "startGoldenAge" && isFirstGoldenAge.value && historyCards.value.length > 0) {
-		pickingHistoryCard.value = true;
+	if (actionType === "startGoldenAge") {
+		confirmGoldenAge.value = true;
 		return;
 	}
 	if (actionType === "developTechnology") {
@@ -978,6 +983,19 @@ function onAction(actionType: ActionType) {
 		return;
 	}
 	move("performAction", actionType);
+}
+
+function onConfirmGoldenAge() {
+	confirmGoldenAge.value = false;
+	if (isFirstGoldenAge.value && historyCards.value.length > 0) {
+		pickingHistoryCard.value = true;
+		return;
+	}
+	move("performAction", "startGoldenAge");
+}
+
+function onCancelGoldenAge() {
+	confirmGoldenAge.value = false;
 }
 
 function onPickHistoryCard(cardId: string) {
@@ -1165,7 +1183,7 @@ const canFoundCityAtDest = computed(() => {
 	if (hasCapitalOrCity) return false;
 	const player = G.value.players[playerID.value];
 	if (!player) return false;
-	const hasConstruction = player.researchedTechs?.[2]?.[1];
+	const hasConstruction = player.researchedTechs?.[2]?.[2];
 	const cubeCost = hasConstruction ? 2 : 1;
 	if (player.cubes < cubeCost) return false;
 	return true;
@@ -1271,13 +1289,13 @@ const canFoundCityAtSoldierDest = computed(() => {
 	if (!hasEnemies) {
 		const player = G.value.players[playerID.value];
 		if (!player) return false;
-		const hasConstruction = player.researchedTechs?.[2]?.[1];
+		const hasConstruction = player.researchedTechs?.[2]?.[2];
 		const cubeCost = hasConstruction ? 2 : 1;
 		if (player.cubes < cubeCost) return false;
 	} else {
 		const player = G.value.players[playerID.value];
 		if (!player) return false;
-		const hasConstruction = player.researchedTechs?.[2]?.[1];
+		const hasConstruction = player.researchedTechs?.[2]?.[2];
 		const cubeCost = hasConstruction ? 2 : 1;
 		if (player.cubes < cubeCost) return false;
 		const friendlyCapOrCity =
@@ -1347,6 +1365,7 @@ const isSoldierActive = computed(() => soldierPhase.value !== null);
 
 const agoraAction = ref<"builder" | "artist" | null>(null);
 const agoraWorkerId = ref<string | null>(null);
+const pendingBuildingCardId = ref<string | null>(null);
 
 const agoraWorkers = computed(() => {
 	if (!G.value?.pieces) return [];
@@ -1378,12 +1397,31 @@ function onSelectAgoraWorker(piece: BoardPiece) {
 		move("performAction", "artist", piece.id);
 		resetAgora();
 	} else if (agoraAction.value === "builder") {
-		agoraWorkerId.value = piece.id;
+		if (pendingBuildingCardId.value) {
+			move("performAction", "builder", piece.id, pendingBuildingCardId.value);
+			resetAgora();
+		} else {
+			agoraWorkerId.value = piece.id;
+		}
 	}
 }
 
 function onSelectBuildingCard(cardId: string) {
-	if (agoraAction.value !== "builder" || !agoraWorkerId.value) return;
+	if (agoraAction.value !== "builder") {
+		if (!canDoAction("builder")) return;
+		if (!myPlayer.value) return;
+		const slots = getUnlockedBuildingSlots(myPlayer.value);
+		const hasEmptySlot = slots.some((unlocked, i) => unlocked && myPlayer.value!.builtBuildings[i] === null);
+		if (!hasEmptySlot || availableBuildings.value.length === 0) return;
+		if (canBuilderWorkerless.value) {
+			move("performAction", "builder", "__workerless__", cardId);
+			return;
+		}
+		agoraAction.value = "builder";
+		pendingBuildingCardId.value = cardId;
+		return;
+	}
+	if (!agoraWorkerId.value) return;
 	move("performAction", "builder", agoraWorkerId.value, cardId);
 	resetAgora();
 }
@@ -1391,6 +1429,7 @@ function onSelectBuildingCard(cardId: string) {
 function resetAgora() {
 	agoraAction.value = null;
 	agoraWorkerId.value = null;
+	pendingBuildingCardId.value = null;
 }
 
 const isAgoraActive = computed(() => agoraAction.value !== null);
@@ -1543,7 +1582,13 @@ const CIV_DISPLAY_NAMES: Record<string, string> = {
 };
 
 function onClickWonderCard(cardId: string) {
-	if (!selectingWonder.value || !canAffordWonder(availableWonders.value.find((c) => c.id === cardId)!)) return;
+	if (!selectingWonder.value) {
+		if (!canDoAction("buildWonder")) return;
+		const card = availableWonders.value.find((c) => c.id === cardId);
+		if (!card || !canAffordWonder(card)) return;
+		selectingWonder.value = true;
+	}
+	if (!canAffordWonder(availableWonders.value.find((c) => c.id === cardId)!)) return;
 	onSelectWonderToBuild(cardId);
 }
 
@@ -1678,7 +1723,16 @@ function onCancelIndia() {
 	pendingIndiaCivKeepOld.value = null;
 }
 
-type PromptType = "capitalMove" | "foundCity" | "collectIncome" | "pickHistory" | "soldierAttack" | "soldierCity" | "indiaSelect" | "greeceWonder";
+type PromptType =
+	| "capitalMove"
+	| "foundCity"
+	| "collectIncome"
+	| "pickHistory"
+	| "confirmGoldenAge"
+	| "soldierAttack"
+	| "soldierCity"
+	| "indiaSelect"
+	| "greeceWonder";
 
 const activePrompt = computed((): PromptType | null => {
 	if (!isViewingSelf.value) return null;
@@ -1688,6 +1742,7 @@ const activePrompt = computed((): PromptType | null => {
 	if (soldierPhase.value === "confirmCity") return "soldierCity";
 	if (pendingIndiaCivKeepOld.value !== null) return "indiaSelect";
 	if (greeceWonderPending.value !== null) return "greeceWonder";
+	if (isActionPhase.value && isMyTurn.value && confirmGoldenAge.value) return "confirmGoldenAge";
 	if (isActionPhase.value && isMyTurn.value && pickingHistoryCard.value) return "pickHistory";
 	if (isActionPhase.value && isMyTurn.value && myPassedThisEra.value) return "collectIncome";
 	return null;
@@ -1819,6 +1874,25 @@ watch(activePrompt, (newVal) => {
 						Pay {{ getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!) }}g
 					</button>
 					<button class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer" @click="onCancelGreeceChoice">
+						Cancel
+					</button>
+				</template>
+
+				<!-- Confirm Golden Age -->
+				<template v-else-if="activePrompt === 'confirmGoldenAge'">
+					<p class="text-xs md:text-sm text-amber-300 font-medium">
+						Start a Golden Age? You will not be able to take actions for the rest of this era.
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onConfirmGoldenAge"
+					>
+						Yes
+					</button>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onCancelGoldenAge"
+					>
 						Cancel
 					</button>
 				</template>
@@ -2222,10 +2296,10 @@ watch(activePrompt, (newVal) => {
 													<div
 														v-for="n in city.cubes"
 														:key="n"
-														class="w-3 h-3 rounded-[2px]"
+														class="w-3 h-3 rounded-[2px] flex items-center justify-center text-[6px] text-white font-bold"
 														:class="CUBE_BG_CLASSES[PLAYER_COLORS[parseInt(city.owner, 10)]]"
-														:title="`City cube (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
-													/>
+														:title="`City cube ${n}/${city.cubes} (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
+													>{{ n }}</div>
 												</template>
 											</div>
 
@@ -2312,7 +2386,7 @@ watch(activePrompt, (newVal) => {
 						:key="card.id"
 						class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
 						:class="[
-							selectingWonder && canAffordWonder(card)
+							(selectingWonder || canDoAction('buildWonder')) && canAffordWonder(card)
 								? 'bg-purple-900/60 border-purple-400 ring-2 ring-purple-400/50 cursor-pointer hover:ring-purple-300'
 								: hasWonderDiscount(card) || isGreeceFreeAvailable
 								? 'bg-purple-900/60 border-amber-500/70 ring-1 ring-amber-400/30'
@@ -2347,12 +2421,12 @@ watch(activePrompt, (newVal) => {
 						:key="card.id"
 						class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
 						:class="
-							agoraAction === 'builder' && agoraWorkerId
+							(agoraAction === 'builder' && agoraWorkerId) || canDoAction('builder')
 								? 'bg-orange-900/60 border-orange-400 ring-2 ring-orange-400/50 cursor-pointer hover:ring-orange-300'
 								: 'bg-orange-900/60 border-orange-500'
 						"
 						:title="card.description ?? ''"
-						@click="agoraAction === 'builder' && agoraWorkerId ? onSelectBuildingCard(card.id) : undefined"
+						@click="onSelectBuildingCard(card.id)"
 					>
 						<div>
 							<div class="text-orange-200 leading-tight text-[10px] font-semibold">{{ card.name }}</div>
