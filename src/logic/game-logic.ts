@@ -1777,16 +1777,16 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const wonderCard = G.availableWonders[wonderIdx];
 
 				const isGreece = G.activeCivCard[ctx.currentPlayer]?.civType === 'greece';
-				const useFreeGreece = isGreece && !player.usedGreeceWonder;
+				const useFreeGreece = isGreece && !player.usedGreeceWonder && (argD === true);
 
 				let cost = wonderCard.wonderCost ?? 0;
-				if (!useFreeGreece) {
+				if (useFreeGreece) {
+					cost = 0;
+				} else {
 					const activeCiv = G.activeCivCard[ctx.currentPlayer]?.civType;
 					if (activeCiv && activeCiv === wonderCard.wonderDiscountCiv) {
 						cost = wonderCard.wonderDiscountCost ?? cost;
 					}
-				} else {
-					cost = 0;
 				}
 
 				if (player.gold < cost) return INVALID_MOVE;

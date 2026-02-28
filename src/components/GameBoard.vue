@@ -1,7 +1,29 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { useGame, SquareGrid, getTileAt, rotateTileOffsets, type TileRotation } from "@noble/bg-engine/client";
-import { IconChevronRight, IconDiamond, IconMountain, IconDeer, IconWheat, IconHexagon, IconMeeple, IconLock } from "@tabler/icons-vue";
+import {
+	IconChevronRight,
+	IconDiamond,
+	IconMountain,
+	IconDeer,
+	IconWheat,
+	IconHexagon,
+	IconMeeple,
+	IconLock,
+	IconCompass,
+	IconHammer,
+	IconPalette,
+	IconSword,
+	IconBuildingCastle,
+	IconBolt,
+	IconFlask,
+	IconSunHigh,
+	IconLaurelWreath,
+	IconCoin,
+	IconSquareFilled,
+} from "@tabler/icons-vue";
+
+const props = withDefaults(defineProps<{ headerHeight?: number }>(), { headerHeight: 72 });
 import {
 	gameDef,
 	ERA_TILE_SHAPES,
@@ -119,7 +141,18 @@ const validAnchors = computed<[number, number][]>(() => {
 	const anchors: [number, number][] = [];
 	for (let r = 0; r < G.value.board.rows; r++) {
 		for (let c = 0; c < G.value.board.cols; c++) {
-			if (canPlaceGameTile(G.value.tiles, G.value.board, currentShape.value, r, c, rotation.value, (G.value as GoldenAgesState).boardEdges, tileEdges)) {
+			if (
+				canPlaceGameTile(
+					G.value.tiles,
+					G.value.board,
+					currentShape.value,
+					r,
+					c,
+					rotation.value,
+					(G.value as GoldenAgesState).boardEdges,
+					tileEdges
+				)
+			) {
 				anchors.push([r, c]);
 			}
 		}
@@ -213,6 +246,14 @@ function onCellClick(row: number, col: number) {
 			onSelectWorker(workers[0]);
 		}
 		return;
+	}
+
+	if (isMyTurn.value && isActionPhase.value && !myPassedThisEra.value && explorerPhase.value === null && soldierPhase.value === null) {
+		const workers = piecesAt(row, col).filter((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted);
+		if (workers.length > 0) {
+			onStartExplorer();
+			return;
+		}
 	}
 
 	if (!isMyTurn.value || !isTilePlacement.value) return;
@@ -314,10 +355,14 @@ const previewTileResources = computed((): Map<string, ResourceType[]> => {
 function rotateCellEdgesLocal(edges: CellEdges, rot: TileRotation): CellEdges {
 	const [t, r, b, l] = edges;
 	switch (rot) {
-		case 0: return [t, r, b, l];
-		case 90: return [l, t, r, b];
-		case 180: return [b, l, t, r];
-		case 270: return [r, b, l, t];
+		case 0:
+			return [t, r, b, l];
+		case 90:
+			return [l, t, r, b];
+		case 180:
+			return [b, l, t, r];
+		case 270:
+			return [r, b, l, t];
 	}
 }
 
@@ -354,7 +399,7 @@ function getPreviewBoardEdges(row: number, col: number): CellEdges | undefined {
 
 function waterEdges(edges: CellEdges | undefined): boolean[] {
 	if (!edges) return [false, false, false, false];
-	return [edges[0] === 'water', edges[1] === 'water', edges[2] === 'water', edges[3] === 'water'];
+	return [edges[0] === "water", edges[1] === "water", edges[2] === "water", edges[3] === "water"];
 }
 
 function cellWaterEdges(row: number, col: number): boolean[] {
@@ -364,15 +409,19 @@ function cellWaterEdges(row: number, col: number): boolean[] {
 
 // Debug: log edge state once on load
 const _edgeDebugDone = ref(false);
-watch(() => G.value, (gs) => {
-	if (gs && !_edgeDebugDone.value) {
-		_edgeDebugDone.value = true;
-		const gState = gs as GoldenAgesState;
-		console.log('[edge-debug] G keys:', Object.keys(gs));
-		console.log('[edge-debug] boardEdges:', gState.boardEdges);
-		console.log('[edge-debug] assignedLTile edges:', gState.players?.['0']?.assignedLTile?.edges);
-	}
-}, { immediate: true });
+watch(
+	() => G.value,
+	(gs) => {
+		if (gs && !_edgeDebugDone.value) {
+			_edgeDebugDone.value = true;
+			const gState = gs as GoldenAgesState;
+			console.log("[edge-debug] G keys:", Object.keys(gs));
+			console.log("[edge-debug] boardEdges:", gState.boardEdges);
+			console.log("[edge-debug] assignedLTile edges:", gState.players?.["0"]?.assignedLTile?.edges);
+		}
+	},
+	{ immediate: true }
+);
 
 const boardPreviewResources = computed((): Map<string, ResourceType[]> => {
 	const map = new Map<string, ResourceType[]>();
@@ -398,6 +447,17 @@ const RESOURCE_ICONS: Record<ResourceType, { icon: typeof IconDiamond; color: st
 	rock: { icon: IconMountain, color: "text-stone-400/60" },
 	game: { icon: IconDeer, color: "text-green-400/60" },
 	wheat: { icon: IconWheat, color: "text-amber-400/60" },
+};
+
+const ACTION_ICONS: Record<ActionType, typeof IconCompass> = {
+	explorer: IconCompass,
+	builder: IconHammer,
+	artist: IconPalette,
+	soldier: IconSword,
+	buildWonder: IconBuildingCastle,
+	activateBuildingOrWonder: IconBolt,
+	developTechnology: IconFlask,
+	startGoldenAge: IconSunHigh,
 };
 
 function resourcesAt(row: number, col: number): ResourceType[] {
@@ -456,6 +516,40 @@ const CUBE_BG_CLASSES: Record<PlayerColor, string> = {
 // Cell styling helpers
 // ---------------------------------------------------------------------------
 
+function cellHasPointer(row: number, col: number): boolean {
+	const key = `${row},${col}`;
+
+	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key)) return true;
+	if (soldierPhase.value === "selectWorker" && piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted))
+		return true;
+	if (explorerPhase.value === "selectDest" && explorerReachableSet.value.has(key)) return true;
+	if (explorerPhase.value === "selectWorker" && piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted))
+		return true;
+	if (
+		activatingFactory.value !== null &&
+		piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && p.exhausted && !p.inAgora)
+	)
+		return true;
+	if (agoraAction.value && piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted && !p.inAgora))
+		return true;
+
+	if (
+		isMyTurn.value &&
+		isActionPhase.value &&
+		!myPassedThisEra.value &&
+		explorerPhase.value === null &&
+		soldierPhase.value === null &&
+		agoraAction.value === null &&
+		activatingFactory.value === null
+	) {
+		if (piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted)) return true;
+	}
+
+	if (highlightedCells.value.has(key)) return true;
+
+	return false;
+}
+
 function cellClasses(row: number, col: number): string {
 	const key = `${row},${col}`;
 
@@ -464,49 +558,65 @@ function cellClasses(row: number, col: number): string {
 		const hasEnemy =
 			piecesAt(row, col).some((p) => p.type === "worker" && p.owner !== playerID.value && !p.inAgora) ||
 			(G.value?.cities ?? []).some((ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col);
-		if (hasEnemy) return "bg-red-500/25 border-2 border-red-400/60 cursor-pointer hover:bg-red-500/40 hover:border-red-300 transition-colors";
-		return "bg-cyan-500/25 border-2 border-cyan-400/60 cursor-pointer";
+		if (hasEnemy) return "bg-red-500/25 border-2 border-red-400/60 hover:bg-red-500/40 hover:border-red-300 transition-colors";
+		return "bg-cyan-500/25 border-2 border-cyan-400/60";
 	}
 
 	// Soldier worker selection highlight
 	if (soldierPhase.value === "selectWorker") {
 		const hasWorker = piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted);
-		if (hasWorker) return "bg-red-500/20 border-2 border-red-400/50 cursor-pointer hover:bg-red-500/40 hover:border-red-300 transition-colors";
+		if (hasWorker) return "bg-red-500/20 border-2 border-red-400/50 hover:bg-red-500/40 hover:border-red-300 transition-colors";
 	}
 
 	// Explorer destination highlight takes priority on any cell
 	if (explorerPhase.value === "selectDest" && explorerReachableSet.value.has(key)) {
-		return "bg-cyan-500/25 border-2 border-cyan-400/60 cursor-pointer";
+		return "bg-cyan-500/25 border-2 border-cyan-400/60";
 	}
 
 	// Explorer worker selection highlight
 	if (explorerPhase.value === "selectWorker") {
 		const hasWorker = piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted);
-		if (hasWorker) return "bg-cyan-500/20 border-2 border-cyan-400/50 cursor-pointer hover:bg-cyan-500/40 hover:border-cyan-300 transition-colors";
+		if (hasWorker) return "bg-cyan-500/20 border-2 border-cyan-400/50 hover:bg-cyan-500/40 hover:border-cyan-300 transition-colors";
 	}
 
 	// Factory: highlight exhausted workers on the map
 	if (activatingFactory.value !== null) {
 		const hasExhausted = piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && p.exhausted && !p.inAgora);
-		if (hasExhausted) return "bg-green-500/20 border-2 border-green-400/50 cursor-pointer hover:bg-green-500/40 hover:border-green-300 transition-colors";
+		if (hasExhausted) return "bg-green-500/20 border-2 border-green-400/50 hover:bg-green-500/40 hover:border-green-300 transition-colors";
 	}
 
 	// Agora worker selection highlight
 	if (agoraAction.value) {
 		const hasWorker = piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted && !p.inAgora);
-		if (hasWorker) return "bg-amber-500/20 border-2 border-amber-400/50 cursor-pointer hover:bg-amber-500/40 hover:border-amber-300 transition-colors";
+		if (hasWorker) return "bg-amber-500/20 border-2 border-amber-400/50 hover:bg-amber-500/40 hover:border-amber-300 transition-colors";
 	}
 
+	// Determine base tile styling
+	let base = "";
 	if (isStartingTile(row, col)) {
-		return `bg-amber-900/60 border border-amber-700/40 ${startingTileBorders(row, col)}`;
-	}
-
-	if (isPlayerTile(row, col)) {
+		base = `bg-amber-900/60 border border-amber-700/40 ${startingTileBorders(row, col)}`;
+	} else if (isPlayerTile(row, col)) {
 		const color = tileOwnerColor(row, col);
 		const bg = color ? PLAYER_TILE_BG[color] : "bg-slate-600";
 		const border = color ? PLAYER_TILE_BORDER[color] : "border-slate-500";
-		return `${bg} border ${border} ${playerTileBorders(row, col)}`;
+		base = `${bg} border ${border} ${playerTileBorders(row, col)}`;
 	}
+
+	// Idle actions phase: hover effect on cells with standing workers
+	if (
+		isMyTurn.value &&
+		isActionPhase.value &&
+		!myPassedThisEra.value &&
+		explorerPhase.value === null &&
+		soldierPhase.value === null &&
+		agoraAction.value === null &&
+		activatingFactory.value === null
+	) {
+		const hasWorker = piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted);
+		if (hasWorker) return `${base || "border border-slate-700/20"} hover:brightness-125 transition-all`;
+	}
+
+	if (base) return base;
 
 	if (previewCells.value.has(key)) {
 		return "bg-green-500/40 border border-green-400/60";
@@ -679,8 +789,12 @@ const viewedBuildingSlots = computed(() => {
 	return getUnlockedBuildingSlots(p);
 });
 
-const isSelectingWorker = computed(() =>
-	explorerPhase.value === "selectWorker" || soldierPhase.value === "selectWorker" || agoraAction.value !== null || activatingFactory.value !== null,
+const isSelectingWorker = computed(
+	() =>
+		explorerPhase.value === "selectWorker" ||
+		soldierPhase.value === "selectWorker" ||
+		agoraAction.value !== null ||
+		activatingFactory.value !== null
 );
 
 const hasAvailableWorkers = computed(() => myMapWorkers.value.length > 0);
@@ -702,9 +816,7 @@ const canResearchAnyTech = computed(() => {
 const hasActivatableBuilding = computed(() => {
 	const p = myPlayer.value;
 	if (!p) return false;
-	const hasBuilding = p.builtBuildings.some(
-		(card, i) => card && !p.activatedBuildings[i] && !PASSIVE_BUILDINGS.has(card.buildingType ?? ""),
-	);
+	const hasBuilding = p.builtBuildings.some((card, i) => card && !p.activatedBuildings[i] && !PASSIVE_BUILDINGS.has(card.buildingType ?? ""));
 	const hasWonder = p.builtWonders.some((card, i) => {
 		if (p.activatedWonders[i]) return false;
 		const def = WONDER_DEFS[card.era ?? "I"]?.find((d) => d.type === card.wonderType);
@@ -748,6 +860,22 @@ function isActionAvailable(actionType: ActionType): boolean {
 	if (actionType === "activateBuildingOrWonder") return hasActivatableBuilding.value;
 	if (actionType === "startGoldenAge") return !hasAvailableWorkers.value;
 	return true;
+}
+
+function canDoAction(actionType: ActionType): boolean {
+	return (
+		isViewingSelf.value &&
+		isActionPhase.value &&
+		isMyTurn.value &&
+		!myPassedThisEra.value &&
+		!selectingTech.value &&
+		!isExplorerActive.value &&
+		!isSoldierActive.value &&
+		!isAgoraActive.value &&
+		!isActivating.value &&
+		!selectingWonder.value &&
+		isActionAvailable(actionType)
+	);
 }
 
 function isWorkerSelectable(piece: BoardPiece): boolean {
@@ -1036,7 +1164,10 @@ const canFoundCityAtDest = computed(() => {
 		G.value.pieces.some((p) => p.type === "capital" && p.row === r && p.col === c) || G.value.cities.some((ct) => ct.row === r && ct.col === c);
 	if (hasCapitalOrCity) return false;
 	const player = G.value.players[playerID.value];
-	if (!player || player.cubes < 1) return false;
+	if (!player) return false;
+	const hasConstruction = player.researchedTechs?.[2]?.[1];
+	const cubeCost = hasConstruction ? 2 : 1;
+	if (player.cubes < cubeCost) return false;
 	return true;
 });
 
@@ -1107,14 +1238,11 @@ const soldierReachableSet = computed(() => {
 });
 
 const soldierEnemiesAtDest = computed(() => {
-	if (!soldierDest.value || !G.value || !playerID.value) return { workers: [] as BoardPiece[], cities: [] as BoardCity[], defenderIds: [] as string[] };
+	if (!soldierDest.value || !G.value || !playerID.value)
+		return { workers: [] as BoardPiece[], cities: [] as BoardCity[], defenderIds: [] as string[] };
 	const [r, c] = soldierDest.value;
-	const workers = G.value.pieces.filter(
-		(p) => p.type === "worker" && p.owner !== playerID.value && p.row === r && p.col === c && !p.inAgora,
-	);
-	const cities = G.value.cities.filter(
-		(ct) => ct.owner !== playerID.value && ct.row === r && ct.col === c,
-	);
+	const workers = G.value.pieces.filter((p) => p.type === "worker" && p.owner !== playerID.value && p.row === r && p.col === c && !p.inAgora);
+	const cities = G.value.cities.filter((ct) => ct.owner !== playerID.value && ct.row === r && ct.col === c);
 	const ids = new Set<string>();
 	for (const w of workers) ids.add(w.owner);
 	for (const ct of cities) ids.add(ct.owner);
@@ -1142,10 +1270,16 @@ const canFoundCityAtSoldierDest = computed(() => {
 	if (hasCapitalOrCity && !hasEnemies) return false;
 	if (!hasEnemies) {
 		const player = G.value.players[playerID.value];
-		if (!player || player.cubes < 1) return false;
+		if (!player) return false;
+		const hasConstruction = player.researchedTechs?.[2]?.[1];
+		const cubeCost = hasConstruction ? 2 : 1;
+		if (player.cubes < cubeCost) return false;
 	} else {
 		const player = G.value.players[playerID.value];
-		if (!player || player.cubes < 1) return false;
+		if (!player) return false;
+		const hasConstruction = player.researchedTechs?.[2]?.[1];
+		const cubeCost = hasConstruction ? 2 : 1;
+		if (player.cubes < cubeCost) return false;
 		const friendlyCapOrCity =
 			G.value.pieces.some((p) => p.type === "capital" && p.owner === playerID.value && p.row === r && p.col === c) ||
 			G.value.cities.some((ct) => ct.owner === playerID.value && ct.row === r && ct.col === c);
@@ -1355,7 +1489,9 @@ function resetActivate() {
 	notreDamePending.value = null;
 }
 
-const isActivating = computed(() => activatingBuilding.value || activatingTechSlot.value !== null || activatingFactory.value !== null || notreDamePending.value !== null);
+const isActivating = computed(
+	() => activatingBuilding.value || activatingTechSlot.value !== null || activatingFactory.value !== null || notreDamePending.value !== null
+);
 
 // ---------------------------------------------------------------------------
 // Build Wonder
@@ -1365,18 +1501,24 @@ const selectingWonder = ref(false);
 const greatLibraryTechPending = ref<string | null>(null);
 const oxfordTechPending = ref<string | null>(null);
 const oxfordTechQueue = ref<[number, number][]>([]);
+const greeceWonderPending = ref<string | null>(null);
+const greeceWonderUseFree = ref(false);
+
+const isGreeceFreeAvailable = computed(() => {
+	if (!G.value || !playerID.value) return false;
+	const isGreece = G.value.activeCivCard[playerID.value]?.civType === "greece";
+	return isGreece && !!myPlayer.value && !myPlayer.value.usedGreeceWonder;
+});
 
 function getWonderCost(card: { wonderCost?: number; wonderDiscountCiv?: string; wonderDiscountCost?: number }): number {
 	if (!G.value || !playerID.value) return card.wonderCost ?? 0;
-	const isGreece = G.value.activeCivCard[playerID.value]?.civType === "greece";
-	const p = myPlayer.value;
-	if (isGreece && p && !p.usedGreeceWonder) return 0;
 	const activeCiv = G.value.activeCivCard[playerID.value]?.civType;
 	if (activeCiv && activeCiv === card.wonderDiscountCiv) return card.wonderDiscountCost ?? card.wonderCost ?? 0;
 	return card.wonderCost ?? 0;
 }
 
 function canAffordWonder(card: { wonderCost?: number; wonderDiscountCiv?: string; wonderDiscountCost?: number }): boolean {
+	if (isGreeceFreeAvailable.value) return true;
 	return (myPlayer.value?.gold ?? 0) >= getWonderCost(card);
 }
 
@@ -1385,38 +1527,84 @@ function hasWonderDiscount(card: { wonderCost?: number; wonderDiscountCiv?: stri
 }
 
 const CIV_DISPLAY_NAMES: Record<string, string> = {
-	babylon: 'Babylon', phoenicia: 'Phoenicia', egypt: 'Egypt', greece: 'Greece',
-	persia: 'Persia', rome: 'Rome', china: 'China', france: 'France',
-	byzantine: 'Byzantine', arabia: 'Arabia', england: 'England', russia: 'Russia',
-	usa: 'USA',
+	babylon: "Babylon",
+	phoenicia: "Phoenicia",
+	egypt: "Egypt",
+	greece: "Greece",
+	persia: "Persia",
+	rome: "Rome",
+	china: "China",
+	france: "France",
+	byzantine: "Byzantine",
+	arabia: "Arabia",
+	england: "England",
+	russia: "Russia",
+	usa: "USA",
 };
+
+function onClickWonderCard(cardId: string) {
+	if (!selectingWonder.value || !canAffordWonder(availableWonders.value.find((c) => c.id === cardId)!)) return;
+	onSelectWonderToBuild(cardId);
+}
 
 function onSelectWonderToBuild(cardId: string) {
 	if (!selectingWonder.value) return;
 	const card = availableWonders.value.find((c) => c.id === cardId);
 	if (!card || !canAffordWonder(card)) return;
 
+	if (isGreeceFreeAvailable.value) {
+		greeceWonderPending.value = cardId;
+		return;
+	}
+
+	proceedBuildWonder(cardId, false);
+}
+
+function onGreeceWonderChoice(useFree: boolean) {
+	const cardId = greeceWonderPending.value;
+	if (!cardId) return;
+	greeceWonderPending.value = null;
+
+	if (!useFree) {
+		const card = availableWonders.value.find((c) => c.id === cardId);
+		if (!card || (myPlayer.value?.gold ?? 0) < getWonderCost(card)) return;
+	}
+
+	proceedBuildWonder(cardId, useFree);
+}
+
+function onCancelGreeceChoice() {
+	greeceWonderPending.value = null;
+}
+
+function proceedBuildWonder(cardId: string, useGreeceFree: boolean) {
+	const card = availableWonders.value.find((c) => c.id === cardId);
+	if (!card) return;
+
 	if (card.wonderType === "greatLibrary") {
 		greatLibraryTechPending.value = cardId;
+		greeceWonderUseFree.value = useGreeceFree;
 		selectingTech.value = true;
 		return;
 	}
 
 	if (card.wonderType === "oxfordUniversity") {
 		oxfordTechPending.value = cardId;
+		greeceWonderUseFree.value = useGreeceFree;
 		oxfordTechQueue.value = [];
 		selectingTech.value = true;
 		return;
 	}
 
-	move("performAction", "buildWonder", cardId);
+	move("performAction", "buildWonder", cardId, undefined, undefined, useGreeceFree);
 	selectingWonder.value = false;
 }
 
 function onGreatLibraryTech(row: number, col: number) {
 	if (!greatLibraryTechPending.value) return;
-	move("performAction", "buildWonder", greatLibraryTechPending.value, row, col);
+	move("performAction", "buildWonder", greatLibraryTechPending.value, row, col, greeceWonderUseFree.value);
 	greatLibraryTechPending.value = null;
+	greeceWonderUseFree.value = false;
 	selectingTech.value = false;
 	selectingWonder.value = false;
 }
@@ -1431,9 +1619,10 @@ function onOxfordTech(row: number, col: number) {
 function onConfirmOxford() {
 	if (!oxfordTechPending.value || oxfordTechQueue.value.length === 0) return;
 	const flat = oxfordTechQueue.value.flat();
-	move("performAction", "buildWonder", oxfordTechPending.value, flat);
+	move("performAction", "buildWonder", oxfordTechPending.value, flat, undefined, greeceWonderUseFree.value);
 	oxfordTechPending.value = null;
 	oxfordTechQueue.value = [];
+	greeceWonderUseFree.value = false;
 	selectingTech.value = false;
 	selectingWonder.value = false;
 }
@@ -1443,6 +1632,8 @@ function cancelWonderSelect() {
 	greatLibraryTechPending.value = null;
 	oxfordTechPending.value = null;
 	oxfordTechQueue.value = [];
+	greeceWonderPending.value = null;
+	greeceWonderUseFree.value = false;
 	selectingTech.value = false;
 }
 
@@ -1487,7 +1678,7 @@ function onCancelIndia() {
 	pendingIndiaCivKeepOld.value = null;
 }
 
-type PromptType = "capitalMove" | "foundCity" | "collectIncome" | "pickHistory" | "soldierAttack" | "soldierCity" | "indiaSelect";
+type PromptType = "capitalMove" | "foundCity" | "collectIncome" | "pickHistory" | "soldierAttack" | "soldierCity" | "indiaSelect" | "greeceWonder";
 
 const activePrompt = computed((): PromptType | null => {
 	if (!isViewingSelf.value) return null;
@@ -1496,6 +1687,7 @@ const activePrompt = computed((): PromptType | null => {
 	if (soldierPhase.value === "confirmAttack") return "soldierAttack";
 	if (soldierPhase.value === "confirmCity") return "soldierCity";
 	if (pendingIndiaCivKeepOld.value !== null) return "indiaSelect";
+	if (greeceWonderPending.value !== null) return "greeceWonder";
 	if (isActionPhase.value && isMyTurn.value && pickingHistoryCard.value) return "pickHistory";
 	if (isActionPhase.value && isMyTurn.value && myPassedThisEra.value) return "collectIncome";
 	return null;
@@ -1509,7 +1701,11 @@ watch(activePrompt, (newVal) => {
 <template>
 	<!-- Pinned prompt banner (fixed below header) -->
 	<Teleport to="body">
-		<div v-if="activePrompt" class="fixed left-0 right-0 z-30 bg-slate-800/95 border-b border-amber-600/40 backdrop-blur-sm" style="top: 56px">
+		<div
+			v-if="activePrompt"
+			class="fixed left-0 right-0 z-30 bg-slate-800/95 border-b border-amber-600/40 backdrop-blur-sm"
+			:style="{ top: props.headerHeight + 'px' }"
+		>
 			<div class="max-w-5xl mx-auto px-3 md:px-6 py-2 md:py-3 flex flex-wrap items-center justify-center gap-2 md:gap-4">
 				<!-- Capital relocation -->
 				<template v-if="activePrompt === 'capitalMove'">
@@ -1548,9 +1744,7 @@ watch(activePrompt, (newVal) => {
 
 				<!-- Soldier attack confirmation -->
 				<template v-else-if="activePrompt === 'soldierAttack'">
-					<p class="text-xs md:text-sm text-red-300 font-medium">
-						Attack for {{ soldierAttackCost }} gold?
-					</p>
+					<p class="text-xs md:text-sm text-red-300 font-medium">Attack for {{ soldierAttackCost }} gold?</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
 						@click="onConfirmAttack(true)"
@@ -1590,7 +1784,11 @@ watch(activePrompt, (newVal) => {
 							v-for="(row, rIdx) in TECH_TREE"
 							:key="`india-${rIdx}`"
 							class="px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors"
-							:class="myPlayer?.researchedTechs[rIdx][4] ? 'bg-slate-700/40 text-slate-500 cursor-default' : 'bg-purple-700 hover:bg-purple-600 cursor-pointer'"
+							:class="
+								myPlayer?.researchedTechs[rIdx][4]
+									? 'bg-slate-700/40 text-slate-500 cursor-default'
+									: 'bg-purple-700 hover:bg-purple-600 cursor-pointer'
+							"
 							:disabled="myPlayer?.researchedTechs[rIdx][4] ?? false"
 							@click="!myPlayer?.researchedTechs[rIdx][4] && onIndiaSelectTech(rIdx)"
 						>
@@ -1598,6 +1796,31 @@ watch(activePrompt, (newVal) => {
 						</button>
 					</div>
 					<button class="text-xs text-slate-500 hover:text-slate-300 transition-colors" @click="onCancelIndia">Cancel</button>
+				</template>
+
+				<!-- Greece free wonder choice -->
+				<template v-else-if="activePrompt === 'greeceWonder'">
+					<p class="text-xs md:text-sm text-purple-300 font-medium shrink-0">
+						Build
+						<span class="text-purple-100 font-semibold">{{ availableWonders.find((c) => c.id === greeceWonderPending)?.name }}</span> —
+						use Greece ability (free, once per game)?
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onGreeceWonderChoice(true)"
+					>
+						Build Free
+					</button>
+					<button
+						v-if="(myPlayer?.gold ?? 0) >= getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onGreeceWonderChoice(false)"
+					>
+						Pay {{ getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!) }}g
+					</button>
+					<button class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer" @click="onCancelGreeceChoice">
+						Cancel
+					</button>
 				</template>
 
 				<!-- Collect golden age income -->
@@ -1659,10 +1882,22 @@ watch(activePrompt, (newVal) => {
 						:class="previewShapeSet.has(`${r - 1},${c - 1}`) ? 'bg-green-700/50 border border-green-500/60' : 'bg-transparent'"
 					>
 						<template v-if="previewTileEdges.has(`${r - 1},${c - 1}`)">
-							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[0]" class="absolute top-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10" />
-							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[1]" class="absolute top-0 right-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10" />
-							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[2]" class="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10" />
-							<div v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[3]" class="absolute top-0 left-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10" />
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[0]"
+								class="absolute top-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[1]"
+								class="absolute top-0 right-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[2]"
+								class="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[3]"
+								class="absolute top-0 left-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
 						</template>
 						<template v-if="previewTileResources.has(`${r - 1},${c - 1}`)">
 							<template v-if="previewTileResources.get(`${r - 1},${c - 1}`)!.length === 1">
@@ -1750,7 +1985,9 @@ watch(activePrompt, (newVal) => {
 						>
 							<div>
 								<div class="text-white/90 leading-tight text-[10px] font-semibold">{{ myActiveCivCard.name }}</div>
-								<div v-if="myActiveCivCard.description" class="text-white/60 text-[8px] leading-tight mt-1">{{ myActiveCivCard.description }}</div>
+								<div v-if="myActiveCivCard.description" class="text-white/60 text-[8px] leading-tight mt-1">
+									{{ myActiveCivCard.description }}
+								</div>
 							</div>
 							<div class="text-white/40 text-[9px]">#{{ myActiveCivCard.number }}</div>
 						</div>
@@ -1770,7 +2007,9 @@ watch(activePrompt, (newVal) => {
 						>
 							<div>
 								<div class="text-white/90 leading-tight text-[10px] font-semibold">{{ myEraCard.name }}</div>
-								<div v-if="myEraCard.description" class="text-white/60 text-[8px] leading-tight mt-1">{{ myEraCard.description }}</div>
+								<div v-if="myEraCard.description" class="text-white/60 text-[8px] leading-tight mt-1">
+									{{ myEraCard.description }}
+								</div>
 							</div>
 							<div class="text-white/40 text-[9px]">#{{ myEraCard.number }}</div>
 						</div>
@@ -1788,7 +2027,9 @@ watch(activePrompt, (newVal) => {
 		<!-- Board area: left panel (Agora + Judgement) | Board with score track | right panel (Wonders + Buildings) -->
 		<div class="flex flex-col md:flex-row gap-3 md:gap-4 items-center md:items-start justify-center w-full">
 			<!-- Left panel: Agora + Judgement cards -->
-			<div class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto">
+			<div
+				class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto"
+			>
 				<!-- Agora -->
 				<div
 					class="w-[80px] h-[80px] rounded-lg border-2 border-amber-600/50 bg-amber-900/20 flex flex-col items-center justify-center gap-1"
@@ -1827,34 +2068,13 @@ watch(activePrompt, (newVal) => {
 
 			<!-- Board with score track -->
 			<div class="order-1 md:order-none w-full md:w-auto overflow-x-auto md:overflow-x-visible">
-			<div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col min-w-fit">
-				<!-- Top edge of score track (0 at left → 30 at right) -->
-				<div class="flex">
-					<div
-						v-for="pos in topEdgeCells"
-						:key="`t${pos}`"
-						class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-r-0"
-					>
-						<span v-if="showTrackNumber(pos)" class="text-[10px] text-slate-500 leading-none font-medium">{{ pos }}</span>
-						<div v-if="playersAtTrackPosition.has(pos)" class="absolute bottom-0.5 grid grid-cols-2 gap-px">
-							<div
-								v-for="color in playersAtTrackPosition.get(pos)"
-								:key="color"
-								class="w-3 h-3 rounded-full"
-								:class="PLAYER_COLOR_CLASSES[color]"
-							/>
-						</div>
-					</div>
-				</div>
-
-				<!-- Middle: left track + board + right track -->
-				<div class="flex">
-					<!-- Left edge (99 at top → 81 at bottom) -->
-					<div class="flex flex-col w-9 shrink-0">
+				<div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col min-w-fit">
+					<!-- Top edge of score track (0 at left → 30 at right) -->
+					<div class="flex">
 						<div
-							v-for="pos in leftEdgeCells"
-							:key="`l${pos}`"
-							class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-b-0"
+							v-for="pos in topEdgeCells"
+							:key="`t${pos}`"
+							class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-r-0"
 						>
 							<span v-if="showTrackNumber(pos)" class="text-[10px] text-slate-500 leading-none font-medium">{{ pos }}</span>
 							<div v-if="playersAtTrackPosition.has(pos)" class="absolute bottom-0.5 grid grid-cols-2 gap-px">
@@ -1868,147 +2088,203 @@ watch(activePrompt, (newVal) => {
 						</div>
 					</div>
 
-					<!-- Board -->
-					<div class="p-1 relative">
-						<div class="absolute inset-0 opacity-10" style="background: url('/images/water-bg.jpg') center / cover no-repeat;" />
-						<SquareGrid :board="G.board" :cell-size="96" @cell-click="onCellClick">
-							<template #cell="{ row, col }">
-								<div
-									class="w-full h-full flex flex-col items-center justify-center rounded-sm transition-colors relative"
-									:class="cellClasses(row, col)"
-									@mouseenter="onCellHover(row, col)"
-									@mouseleave="onCellLeave"
-								>
-									<!-- Water edge indicators -->
-									<div v-if="cellWaterEdges(row, col)[0]" class="absolute top-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10" />
-									<div v-if="cellWaterEdges(row, col)[1]" class="absolute top-0 right-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10" />
-									<div v-if="cellWaterEdges(row, col)[2]" class="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10" />
-									<div v-if="cellWaterEdges(row, col)[3]" class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10" />
-									<!-- <span
+					<!-- Middle: left track + board + right track -->
+					<div class="flex">
+						<!-- Left edge (99 at top → 81 at bottom) -->
+						<div class="flex flex-col w-9 shrink-0">
+							<div
+								v-for="pos in leftEdgeCells"
+								:key="`l${pos}`"
+								class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-b-0"
+							>
+								<span v-if="showTrackNumber(pos)" class="text-[10px] text-slate-500 leading-none font-medium">{{ pos }}</span>
+								<div v-if="playersAtTrackPosition.has(pos)" class="absolute bottom-0.5 grid grid-cols-2 gap-px">
+									<div
+										v-for="color in playersAtTrackPosition.get(pos)"
+										:key="color"
+										class="w-3 h-3 rounded-full"
+										:class="PLAYER_COLOR_CLASSES[color]"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<!-- Board -->
+						<div class="p-1 relative">
+							<div class="absolute inset-0 opacity-10" style="background: url('/images/water-bg.jpg') center / cover no-repeat" />
+							<SquareGrid :board="G.board" :cell-size="96" @cell-click="onCellClick">
+								<template #cell="{ row, col }">
+									<div
+										class="w-full h-full flex flex-col items-center justify-center rounded-sm transition-colors relative"
+										:class="cellClasses(row, col)"
+										:style="{ cursor: cellHasPointer(row, col) ? 'pointer' : 'default' }"
+										@mouseenter="onCellHover(row, col)"
+										@mouseleave="onCellLeave"
+									>
+										<!-- Water edge indicators -->
+										<div
+											v-if="cellWaterEdges(row, col)[0]"
+											class="absolute top-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<div
+											v-if="cellWaterEdges(row, col)[1]"
+											class="absolute top-0 right-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<div
+											v-if="cellWaterEdges(row, col)[2]"
+											class="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<div
+											v-if="cellWaterEdges(row, col)[3]"
+											class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<!-- <span
 										v-if="isStartingTileLabel(row, col)"
 										class="text-amber-300/60 text-xs font-medium pointer-events-none select-none"
 										>Start</span
 									> -->
 
-									<template v-if="resourcesAt(row, col).length === 1 && !previewCells.has(`${row},${col}`)">
-										<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-											<component
-												:is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
-												:size="28"
-												:class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
-											/>
-										</div>
-									</template>
-									<template v-else-if="resourcesAt(row, col).length === 2 && !previewCells.has(`${row},${col}`)">
-										<component
-											:is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
-											:size="22"
-											:class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
-											class="absolute pointer-events-none select-none"
-											style="top: 18%; left: 18%"
-										/>
-										<component
-											:is="RESOURCE_ICONS[resourcesAt(row, col)[1]].icon"
-											:size="22"
-											:class="RESOURCE_ICONS[resourcesAt(row, col)[1]].color"
-											class="absolute pointer-events-none select-none"
-											style="bottom: 18%; right: 18%"
-										/>
-									</template>
-
-									<template v-if="previewCells.has(`${row},${col}`) && boardPreviewResources.has(`${row},${col}`)">
-										<template v-if="boardPreviewResources.get(`${row},${col}`)!.length === 1">
+										<template v-if="resourcesAt(row, col).length === 1 && !previewCells.has(`${row},${col}`)">
 											<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
 												<component
-													:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
+													:is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
 													:size="28"
-													:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
-													class="opacity-80"
+													:class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
 												/>
 											</div>
 										</template>
-										<template v-else>
+										<template v-else-if="resourcesAt(row, col).length === 2 && !previewCells.has(`${row},${col}`)">
 											<component
-												:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
+												:is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
 												:size="22"
-												:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
-												class="absolute pointer-events-none select-none opacity-80"
+												:class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
+												class="absolute pointer-events-none select-none"
 												style="top: 18%; left: 18%"
 											/>
 											<component
-												:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].icon"
+												:is="RESOURCE_ICONS[resourcesAt(row, col)[1]].icon"
 												:size="22"
-												:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].color"
-												class="absolute pointer-events-none select-none opacity-80"
+												:class="RESOURCE_ICONS[resourcesAt(row, col)[1]].color"
+												class="absolute pointer-events-none select-none"
 												style="bottom: 18%; right: 18%"
 											/>
 										</template>
-									</template>
 
-									<template v-if="piecesAt(row, col).length > 0 || citiesAt(row, col).length > 0">
-										<!-- Capital: top-left -->
-										<template v-for="piece in piecesAt(row, col).filter((p) => p.type === 'capital')" :key="piece.id">
-											<IconHexagon
-												:size="20"
-												class="absolute pointer-events-none select-none"
-												:class="[PIECE_FILL_CLASSES[pieceColor(piece)], PIECE_STROKE_CLASSES[pieceColor(piece)]]"
-												style="top: 4px; left: 4px"
-												stroke-width="2.5"
-												:title="`Capital (${pieceColor(piece)})`"
-											/>
-										</template>
-
-										<!-- City cubes: top-right, stacked downward -->
-										<div
-											v-if="citiesAt(row, col).length > 0"
-											class="absolute flex flex-col gap-0.5 pointer-events-none select-none"
-											style="top: 4px; right: 4px"
-										>
-											<template v-for="city in citiesAt(row, col)" :key="`city-${city.owner}`">
-												<div
-													v-for="n in city.cubes"
-													:key="n"
-													class="w-3 h-3 rounded-[2px]"
-													:class="CUBE_BG_CLASSES[PLAYER_COLORS[parseInt(city.owner, 10)]]"
-													:title="`City cube (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
+										<template v-if="previewCells.has(`${row},${col}`) && boardPreviewResources.has(`${row},${col}`)">
+											<template v-if="boardPreviewResources.get(`${row},${col}`)!.length === 1">
+												<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+													<component
+														:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
+														:size="28"
+														:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
+														class="opacity-80"
+													/>
+												</div>
+											</template>
+											<template v-else>
+												<component
+													:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
+													:size="22"
+													:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
+													class="absolute pointer-events-none select-none opacity-80"
+													style="top: 18%; left: 18%"
+												/>
+												<component
+													:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].icon"
+													:size="22"
+													:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].color"
+													class="absolute pointer-events-none select-none opacity-80"
+													style="bottom: 18%; right: 18%"
 												/>
 											</template>
-										</div>
+										</template>
 
-										<!-- Workers: bottom row, centered -->
-										<div
-											v-if="piecesAt(row, col).some((p) => p.type === 'worker')"
-											class="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-0 select-none"
-											:class="isSelectingWorker ? 'pointer-events-auto' : 'pointer-events-none'"
-											style="bottom: 0px"
-										>
-											<IconMeeple
-												v-for="piece in piecesAt(row, col).filter((p) => p.type === 'worker')"
-												:key="piece.id"
-												:size="22"
-												class="-mx-0.5 transition-all"
-												:class="[
-													PIECE_COLOR_CLASSES[pieceColor(piece)],
-													isWorkerSelectable(piece)
-														? 'cursor-pointer hover:scale-125 hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.5)]'
-														: piece.exhausted ? 'opacity-40' : '',
-												]"
-												stroke-width="2.5"
-												:title="`Worker (${pieceColor(piece)})${piece.exhausted ? ' - exhausted' : ''}`"
-											/>
-										</div>
-									</template>
+										<template v-if="piecesAt(row, col).length > 0 || citiesAt(row, col).length > 0">
+											<!-- Capital: top-left -->
+											<template v-for="piece in piecesAt(row, col).filter((p) => p.type === 'capital')" :key="piece.id">
+												<IconHexagon
+													:size="20"
+													class="absolute pointer-events-none select-none"
+													:class="[PIECE_FILL_CLASSES[pieceColor(piece)], PIECE_STROKE_CLASSES[pieceColor(piece)]]"
+													style="top: 4px; left: 4px"
+													stroke-width="2.5"
+													:title="`Capital (${pieceColor(piece)})`"
+												/>
+											</template>
+
+											<!-- City cubes: top-right, stacked downward -->
+											<div
+												v-if="citiesAt(row, col).length > 0"
+												class="absolute flex flex-col gap-0.5 pointer-events-none select-none"
+												style="top: 4px; right: 4px"
+											>
+												<template v-for="city in citiesAt(row, col)" :key="`city-${city.owner}`">
+													<div
+														v-for="n in city.cubes"
+														:key="n"
+														class="w-3 h-3 rounded-[2px]"
+														:class="CUBE_BG_CLASSES[PLAYER_COLORS[parseInt(city.owner, 10)]]"
+														:title="`City cube (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
+													/>
+												</template>
+											</div>
+
+											<!-- Workers: bottom row, centered -->
+											<div
+												v-if="piecesAt(row, col).some((p) => p.type === 'worker')"
+												class="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-0 select-none"
+												:class="isSelectingWorker ? 'pointer-events-auto' : 'pointer-events-none'"
+												style="bottom: 0px"
+											>
+												<IconMeeple
+													v-for="piece in piecesAt(row, col).filter((p) => p.type === 'worker')"
+													:key="piece.id"
+													:size="22"
+													class="-mx-0.5 transition-all"
+													:class="[
+														PIECE_COLOR_CLASSES[pieceColor(piece)],
+														isWorkerSelectable(piece)
+															? 'cursor-pointer hover:scale-125 hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.5)]'
+															: piece.exhausted
+															? 'opacity-40'
+															: '',
+													]"
+													stroke-width="2.5"
+													:title="`Worker (${pieceColor(piece)})${piece.exhausted ? ' - exhausted' : ''}`"
+												/>
+											</div>
+										</template>
+									</div>
+								</template>
+							</SquareGrid>
+						</div>
+
+						<!-- Right edge (31 at top → 50 at bottom) -->
+						<div class="flex flex-col w-9 shrink-0">
+							<div
+								v-for="pos in rightEdgeCells"
+								:key="`r${pos}`"
+								class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-l border-slate-700/30 last:border-b-0"
+							>
+								<span v-if="showTrackNumber(pos)" class="text-[10px] text-slate-500 leading-none font-medium">{{ pos }}</span>
+								<div v-if="playersAtTrackPosition.has(pos)" class="absolute bottom-0.5 grid grid-cols-2 gap-px">
+									<div
+										v-for="color in playersAtTrackPosition.get(pos)"
+										:key="color"
+										class="w-3 h-3 rounded-full"
+										:class="PLAYER_COLOR_CLASSES[color]"
+									/>
 								</div>
-							</template>
-						</SquareGrid>
+							</div>
+						</div>
 					</div>
 
-					<!-- Right edge (31 at top → 50 at bottom) -->
-					<div class="flex flex-col w-9 shrink-0">
+					<!-- Bottom edge of score track (80 at left → 51 at right) -->
+					<div class="flex">
 						<div
-							v-for="pos in rightEdgeCells"
-							:key="`r${pos}`"
-							class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-l border-slate-700/30 last:border-b-0"
+							v-for="pos in bottomEdgeCells"
+							:key="`b${pos}`"
+							class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-t border-r border-slate-700/30 last:border-r-0"
 						>
 							<span v-if="showTrackNumber(pos)" class="text-[10px] text-slate-500 leading-none font-medium">{{ pos }}</span>
 							<div v-if="playersAtTrackPosition.has(pos)" class="absolute bottom-0.5 grid grid-cols-2 gap-px">
@@ -2022,30 +2298,13 @@ watch(activePrompt, (newVal) => {
 						</div>
 					</div>
 				</div>
-
-				<!-- Bottom edge of score track (80 at left → 51 at right) -->
-				<div class="flex">
-					<div
-						v-for="pos in bottomEdgeCells"
-						:key="`b${pos}`"
-						class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-t border-r border-slate-700/30 last:border-r-0"
-					>
-						<span v-if="showTrackNumber(pos)" class="text-[10px] text-slate-500 leading-none font-medium">{{ pos }}</span>
-						<div v-if="playersAtTrackPosition.has(pos)" class="absolute bottom-0.5 grid grid-cols-2 gap-px">
-							<div
-								v-for="color in playersAtTrackPosition.get(pos)"
-								:key="color"
-								class="w-3 h-3 rounded-full"
-								:class="PLAYER_COLOR_CLASSES[color]"
-							/>
-						</div>
-					</div>
-				</div>
-			</div>
 			</div>
 
 			<!-- Right panel: Wonders + Buildings -->
-			<div v-if="availableWonders.length > 0 || availableBuildings.length > 0" class="flex flex-col md:flex-row gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto">
+			<div
+				v-if="availableWonders.length > 0 || availableBuildings.length > 0"
+				class="flex flex-col md:flex-row gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto"
+			>
 				<!-- Wonders -->
 				<div v-if="availableWonders.length > 0" class="flex flex-row md:flex-col gap-2">
 					<div
@@ -2055,12 +2314,12 @@ watch(activePrompt, (newVal) => {
 						:class="[
 							selectingWonder && canAffordWonder(card)
 								? 'bg-purple-900/60 border-purple-400 ring-2 ring-purple-400/50 cursor-pointer hover:ring-purple-300'
-								: hasWonderDiscount(card)
-									? 'bg-purple-900/60 border-amber-500/70 ring-1 ring-amber-400/30'
-									: 'bg-purple-900/60 border-purple-500',
+								: hasWonderDiscount(card) || isGreeceFreeAvailable
+								? 'bg-purple-900/60 border-amber-500/70 ring-1 ring-amber-400/30'
+								: 'bg-purple-900/60 border-purple-500',
 						]"
 						:title="card.description"
-						@click="selectingWonder && canAffordWonder(card) ? onSelectWonderToBuild(card.id) : undefined"
+						@click="onClickWonderCard(card.id)"
 					>
 						<div>
 							<div class="text-purple-200 leading-tight text-[10px] font-semibold">{{ card.name }}</div>
@@ -2068,11 +2327,14 @@ watch(activePrompt, (newVal) => {
 						</div>
 						<div>
 							<div class="flex items-center justify-between">
-								<span class="text-[10px] font-bold" :class="hasWonderDiscount(card) ? 'text-green-400' : 'text-amber-400'">{{ getWonderCost(card) }}g</span>
+								<span class="text-[10px] font-bold" :class="hasWonderDiscount(card) ? 'text-green-400' : 'text-amber-400'"
+									>{{ getWonderCost(card) }}g</span
+								>
 								<span v-if="hasWonderDiscount(card)" class="text-purple-500/60 text-[8px] line-through">{{ card.wonderCost }}g</span>
 							</div>
-							<div v-if="hasWonderDiscount(card)" class="text-amber-400/70 text-[7px] leading-tight mt-0.5">
-								{{ getWonderCost(card) === 0 ? '✦ Free (Greece)' : `✦ ${CIV_DISPLAY_NAMES[card.wonderDiscountCiv!] ?? card.wonderDiscountCiv}` }}
+							<div v-if="isGreeceFreeAvailable" class="text-green-400/80 text-[7px] leading-tight mt-0.5">✦ Greece: Free</div>
+							<div v-else-if="hasWonderDiscount(card)" class="text-amber-400/70 text-[7px] leading-tight mt-0.5">
+								✦ {{ CIV_DISPLAY_NAMES[card.wonderDiscountCiv!] ?? card.wonderDiscountCiv }}
 							</div>
 						</div>
 					</div>
@@ -2128,13 +2390,14 @@ watch(activePrompt, (newVal) => {
 						v-if="isViewedPlayersTurn"
 						class="text-[10px] px-1.5 py-0.5 rounded font-medium animate-pulse"
 						:class="isViewingSelf ? 'bg-emerald-800/60 text-emerald-300' : 'bg-blue-800/60 text-blue-300'"
-					>{{ isViewingSelf ? 'Your Turn' : 'Active Turn' }}</span>
+						>{{ isViewingSelf ? "Your Turn" : "Active Turn" }}</span
+					>
 					<span
 						v-if="isTechSelectionActive"
 						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
 					>
 						<template v-if="japanTechQueue.length > 0">
-							{{ japanTechQueue.length }} tech{{ japanTechQueue.length > 1 ? 's' : '' }} queued ({{ japanQueuedGold }}g)
+							{{ japanTechQueue.length }} tech{{ japanTechQueue.length > 1 ? "s" : "" }} queued ({{ japanQueuedGold }}g)
 							<button
 								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
 								@click="onConfirmJapanTechs"
@@ -2143,7 +2406,7 @@ watch(activePrompt, (newVal) => {
 							</button>
 						</template>
 						<template v-else-if="oxfordTechPending">
-							Oxford University: select {{ 2 - oxfordTechQueue.length }} more tech{{ 2 - oxfordTechQueue.length > 1 ? 's' : '' }} (free)
+							Oxford University: select {{ 2 - oxfordTechQueue.length }} more tech{{ 2 - oxfordTechQueue.length > 1 ? "s" : "" }} (free)
 							<button
 								v-if="oxfordTechQueue.length > 0"
 								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
@@ -2153,7 +2416,17 @@ watch(activePrompt, (newVal) => {
 							</button>
 						</template>
 						<template v-else>
-							{{ greatLibraryTechPending ? 'Select a technology (free - Great Library)' : activatingTechSlot !== null ? (activatingTechDiscount >= 99 ? 'Select a technology (free)' : `Select a technology (${activatingTechDiscount}g discount)`) : japanDiscount > 0 ? `Select technologies (-${japanDiscount}g each)` : 'Select a technology' }}
+							{{
+								greatLibraryTechPending
+									? "Select a technology (free - Great Library)"
+									: activatingTechSlot !== null
+									? activatingTechDiscount >= 99
+										? "Select a technology (free)"
+										: `Select a technology (${activatingTechDiscount}g discount)`
+									: japanDiscount > 0
+									? `Select technologies (-${japanDiscount}g each)`
+									: "Select a technology"
+							}}
 						</template>
 						<button
 							class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
@@ -2202,12 +2475,8 @@ watch(activePrompt, (newVal) => {
 						v-if="agoraAction"
 						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
 					>
-						<template v-if="agoraAction === 'builder' && agoraWorkerId">
-							Select a building card from the display
-						</template>
-						<template v-else>
-							Select a worker for {{ agoraAction === "artist" ? "Artist" : "Builder" }}
-						</template>
+						<template v-if="agoraAction === 'builder' && agoraWorkerId"> Select a building card from the display </template>
+						<template v-else> Select a worker for {{ agoraAction === "artist" ? "Artist" : "Builder" }} </template>
 						<button class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none" @click="resetAgora">
 							&times;
 						</button>
@@ -2217,24 +2486,29 @@ watch(activePrompt, (newVal) => {
 						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-green-800/40 text-green-300 font-medium ml-2"
 					>
 						<template v-if="activatingTechSlot !== null">
-							Select a technology ({{ activatingTechDiscount >= 99 ? 'free' : `${activatingTechDiscount}g discount` }})
+							Select a technology ({{ activatingTechDiscount >= 99 ? "free" : `${activatingTechDiscount}g discount` }})
 						</template>
-						<template v-else-if="activatingFactory !== null">
-							Select an exhausted worker on the map to reactivate
-						</template>
+						<template v-else-if="activatingFactory !== null"> Select an exhausted worker on the map to reactivate </template>
 						<template v-else-if="notreDamePending !== null">
 							Notre Dame:
-							<button class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors" @click="onNotreDameChoice(0)">
+							<button
+								class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors"
+								@click="onNotreDameChoice(0)"
+							>
 								Map → Agora
 							</button>
-							<button class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors" @click="onNotreDameChoice(1)">
+							<button
+								class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors"
+								@click="onNotreDameChoice(1)"
+							>
 								Agora → Capital
 							</button>
 						</template>
-						<template v-else>
-							Select a building or wonder to activate
-						</template>
-						<button class="text-green-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none" @click="resetActivate">
+						<template v-else> Select a building or wonder to activate </template>
+						<button
+							class="text-green-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetActivate"
+						>
 							&times;
 						</button>
 					</span>
@@ -2243,20 +2517,44 @@ watch(activePrompt, (newVal) => {
 						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-purple-800/40 text-purple-300 font-medium ml-2"
 					>
 						Select a wonder to build
-						<button class="text-purple-400 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none" @click="cancelWonderSelect">
+						<button
+							class="text-purple-400 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="cancelWonderSelect"
+						>
 							&times;
 						</button>
 					</span>
 				</div>
 
-				<div class="flex items-center gap-3 text-xs text-slate-400 shrink-0">
-					<span title="Gold">&#x1FA99; {{ viewedPlayer.gold ?? 0 }}</span>
-					<span :title="`Workers: ${viewedWorkerStatus.available} available / ${viewedWorkerStatus.exhausted} exhausted`"
-						>&#x1F9D1; {{ viewedWorkerStatus.available }}/{{ viewedWorkerStatus.total }}</span
+				<div class="flex items-center gap-2 md:gap-3 text-base text-slate-400 shrink-0">
+					<span class="inline-flex items-center gap-0.5" title="Gold"
+						><IconCoin :size="14" class="text-amber-400 mr-1" />
+						<span class="text-amber-400 font-medium">{{ viewedPlayer.gold ?? 0 }}</span></span
 					>
-					<span title="Cubes">&#x25A0; {{ viewedPlayer.cubes ?? 0 }}</span>
-					<span :title="`Glory: ${(viewedPlayer?.gloryTokens ?? []).length} tokens (${(viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0)} pts)`">&#x2B50; {{ (viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0) }}</span>
-					<span title="Cards in hand">&#x1F0CF; {{ viewedPlayer.hand?.length ?? 0 }}</span>
+					<span class="inline-flex items-center gap-0.5" title="Cubes"
+						><IconSquareFilled :size="12" class="text-slate-300 mr-1" /> {{ viewedPlayer.cubes ?? 0 }}</span
+					>
+					<span
+						class="inline-flex items-center gap-0.5"
+						:title="`Workers: ${viewedWorkerStatus.available} available / ${viewedWorkerStatus.exhausted} exhausted`"
+						><IconMeeple :size="14" class="text-slate-400 mr-1" /> {{ viewedWorkerStatus.available }}/{{ viewedWorkerStatus.total }}</span
+					>
+					<span
+						class="inline-flex items-center gap-0.5"
+						:title="`Glory: ${(viewedPlayer?.gloryTokens ?? []).length} tokens (${(viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0)} pts)`"
+						><IconLaurelWreath :size="14" class="text-slate-400 mr-1" />
+						{{ (viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0) }}</span
+					>
+					<span class="hidden md:inline text-slate-600">|</span>
+					<span
+						v-for="res in (['gem', 'rock', 'game', 'wheat'] as ResourceType[])"
+						:key="res"
+						class="inline-flex items-center gap-0.5"
+						:title="res"
+					>
+						<component :is="RESOURCE_ICONS[res].icon" :size="13" :class="RESOURCE_ICONS[res].color" />
+						<span class="ml-1 text-slate-300 font-medium w-2.5 text-right">{{ viewedResourceCounts[res] }}</span>
+					</span>
 				</div>
 
 				<button
@@ -2267,16 +2565,217 @@ watch(activePrompt, (newVal) => {
 				</button>
 			</div>
 
-			<!-- Grid area: 6 cols x 4 rows, col 6 has row-span-2 cells -->
+			<!-- Bottom third: cards + invasion track + actions in one row -->
+			<div class="px-3 md:px-4 pt-1.5 md:pt-2 border-b mb-0 pb-2 border-slate-700/50">
+				<div class="flex gap-2 items-center overflow-x-auto">
+					<!-- Building slots -->
+					<div
+						v-for="(_, slotIdx) in 3"
+						:key="`bslot-${slotIdx}`"
+						class="w-[72px] h-[100px] rounded-lg border-2 flex flex-col items-center justify-center relative transition-all shrink-0"
+						:class="[
+							viewedPlayer?.builtBuildings?.[slotIdx]
+								? viewedPlayer.activatedBuildings?.[slotIdx] &&
+								  !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+									? 'border-orange-500/30 bg-orange-900/10 opacity-50'
+									: activatingBuilding &&
+									  isViewingSelf &&
+									  !viewedPlayer.activatedBuildings?.[slotIdx] &&
+									  !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+									? 'border-green-400 bg-green-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
+									: 'border-orange-500/60 bg-orange-900/20'
+								: viewedBuildingSlots[slotIdx]
+								? 'border-dashed border-slate-500/60 bg-slate-700/30'
+								: 'border-dashed border-slate-700/40 bg-slate-800/30 opacity-40',
+						]"
+						@click="activatingBuilding && viewedPlayer?.builtBuildings?.[slotIdx] && isViewingSelf ? onActivateSlot(slotIdx) : undefined"
+					>
+						<template v-if="viewedPlayer?.builtBuildings?.[slotIdx]">
+							<span
+								class="text-[10px] font-medium text-center px-1 leading-tight"
+								:class="
+									viewedPlayer.activatedBuildings?.[slotIdx] &&
+									!PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+										? 'text-orange-500/50'
+										: 'text-orange-300'
+								"
+							>
+								{{ viewedPlayer.builtBuildings[slotIdx]!.name }}
+							</span>
+							<span
+								v-if="viewedPlayer.builtBuildings[slotIdx]!.description"
+								class="text-[8px] text-center px-1 leading-tight mt-0.5"
+								:class="
+									viewedPlayer.activatedBuildings?.[slotIdx] &&
+									!PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+										? 'text-slate-600'
+										: 'text-slate-400'
+								"
+							>
+								{{ viewedPlayer.builtBuildings[slotIdx]!.description }}
+							</span>
+							<span
+								v-if="PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')"
+								class="text-[8px] text-blue-400/60 mt-1 font-medium"
+								>Permanent</span
+							>
+							<span v-else-if="viewedPlayer.activatedBuildings?.[slotIdx]" class="text-[8px] text-green-400/60 mt-1 font-medium"
+								>Used</span
+							>
+						</template>
+						<template v-else-if="viewedBuildingSlots[slotIdx]">
+							<span class="text-[10px] text-slate-500">Empty</span>
+						</template>
+						<template v-else>
+							<IconLock :size="16" class="text-slate-600" />
+							<span class="text-[9px] text-slate-600 mt-0.5">Locked</span>
+						</template>
+					</div>
+
+					<!-- Built wonders -->
+					<template v-if="viewedPlayer?.builtWonders?.length">
+						<div
+							v-for="(wonder, wIdx) in viewedPlayer.builtWonders"
+							:key="`wonder-${wIdx}`"
+							class="w-[72px] h-[100px] rounded-lg border-2 flex flex-col items-center justify-center p-1.5 transition-all shrink-0"
+							:class="
+								activatingBuilding && isViewingSelf && wonderActivatable(wonder, wIdx)
+									? 'border-green-400 bg-purple-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
+									: wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)
+									? 'border-purple-500/30 bg-purple-900/10 opacity-50'
+									: 'border-purple-500/60 bg-purple-900/20'
+							"
+							@click="activatingBuilding && isViewingSelf ? onActivateWonder(wIdx) : undefined"
+						>
+							<span class="text-[10px] font-medium text-center px-1 leading-tight text-purple-300">
+								{{ wonder.name }}
+							</span>
+							<span v-if="wonder.description" class="text-[8px] text-center px-1 leading-tight mt-0.5 text-slate-400">
+								{{ wonder.description }}
+							</span>
+							<span
+								v-if="wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)"
+								class="text-[8px] text-green-400/60 mt-1 font-medium"
+								>Used</span
+							>
+							<span v-else-if="wonderActivatable(wonder, wIdx)" class="text-[8px] text-purple-400/60 mt-1 font-medium">Activate</span>
+						</div>
+					</template>
+
+					<!-- Active civilisation card -->
+					<div v-if="viewedCivCard" class="shrink-0 pl-2 border-l border-slate-700/40">
+						<div
+							class="w-[72px] h-[100px] rounded-lg border text-xs font-medium flex flex-col justify-between p-1.5"
+							:class="[BACK_COLOR_CLASSES[viewedCivCard.backColor], BACK_COLOR_BORDER[viewedCivCard.backColor]]"
+							:title="viewedCivCard.description ?? ''"
+						>
+							<div>
+								<div class="text-white/90 leading-tight text-[9px] font-semibold">{{ viewedCivCard.name }}</div>
+								<div v-if="viewedCivCard.description" class="text-white/50 text-[7px] leading-tight mt-0.5">
+									{{ viewedCivCard.description }}
+								</div>
+							</div>
+							<div class="text-white/30 text-[8px]">Era {{ viewedCivCard.era }}</div>
+						</div>
+					</div>
+
+					<!-- Spacer to push actions right -->
+					<div class="flex-1" />
+
+					<!-- Invasion track + Action icons (right-aligned, stacked) -->
+					<div class="flex flex-col items-stretch gap-2.5 shrink-0 pl-1 border-l border-slate-700/40">
+						<!-- Invasion track -->
+						<div class="flex items-center justify-between gap-0.5">
+							<template v-for="(cost, idx) in INVASION_COSTS" :key="`inv-${idx}`">
+								<IconChevronRight class="text-slate-500 shrink-0" :size="14" />
+								<div
+									class="w-7 h-7 rounded border flex items-center justify-center text-sm font-bold shrink-0 transition-colors"
+									:class="
+										idx < (viewedPlayer?.invasionTrackPos ?? 0)
+											? 'border-slate-700/40 bg-slate-800/30 text-slate-600 line-through'
+											: idx === (viewedPlayer?.invasionTrackPos ?? 0)
+											? 'border-red-500/60 bg-red-900/30 text-red-400'
+											: 'border-slate-600 bg-slate-700/50 text-amber-400'
+									"
+								>
+									{{ cost }}
+								</div>
+							</template>
+						</div>
+
+						<!-- Action icons -->
+						<div v-if="!activePrompt" class="flex items-center gap-3">
+							<!-- Worker actions group -->
+							<div class="flex items-center gap-1.5">
+								<IconMeeple :size="20" class="text-slate-500 shrink-0" title="Requires a worker" />
+								<div class="grid grid-cols-2 gap-1">
+									<button
+										v-for="action in ACTION_TYPES.slice(0, 4)"
+										:key="action.type"
+										class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
+										:class="
+											canDoAction(action.type)
+												? 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
+												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default'
+										"
+										:disabled="!canDoAction(action.type)"
+										:title="action.label"
+										@click="canDoAction(action.type) && onAction(action.type)"
+									>
+										<component :is="ACTION_ICONS[action.type]" :size="18" />
+									</button>
+								</div>
+							</div>
+
+							<!-- Divider -->
+							<div class="w-px h-16 bg-slate-700/40" />
+
+							<!-- Non-worker actions group -->
+							<div class="flex items-center gap-1.5">
+								<div class="relative shrink-0" title="No worker needed">
+									<IconMeeple :size="20" class="text-slate-500" />
+									<div class="absolute inset-0 flex items-center justify-center">
+										<div class="w-[22px] h-[2px] bg-slate-500 rotate-45" />
+									</div>
+								</div>
+								<div class="grid grid-cols-2 gap-1">
+									<button
+										v-for="action in ACTION_TYPES.slice(4, 8)"
+										:key="action.type"
+										class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
+										:class="[
+											canDoAction(action.type)
+												? action.type === 'startGoldenAge'
+													? 'bg-amber-900/40 border-amber-600/50 hover:bg-amber-800/50 text-amber-200 cursor-pointer'
+													: 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
+												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default',
+										]"
+										:disabled="!canDoAction(action.type)"
+										:title="action.label"
+										@click="canDoAction(action.type) && onAction(action.type)"
+									>
+										<component :is="ACTION_ICONS[action.type]" :size="18" />
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Grid area: 5 cols x 4 rows -->
 			<div class="p-2 md:p-4 overflow-x-auto">
-				<div class="grid gap-1 min-w-[540px]" style="grid-template-columns: repeat(5, 1fr) auto; grid-template-rows: repeat(4, 85px)">
+				<div class="grid gap-1 min-w-[480px]" style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 85px)">
 					<template v-for="(row, rIdx) in TECH_TREE" :key="`row-${rIdx}`">
 						<div
 							v-for="(tech, cIdx) in row"
 							:key="`tech-${rIdx}-${cIdx}`"
 							class="group rounded-sm px-3 py-2 flex items-start relative overflow-hidden transition-colors border"
 							:class="[
-								isTechSelectionActive && isViewingSelf && effectiveTechState(rIdx, cIdx) === 'available' && effectiveTechAffordable(rIdx, cIdx)
+								isTechSelectionActive &&
+								isViewingSelf &&
+								effectiveTechState(rIdx, cIdx) === 'available' &&
+								effectiveTechAffordable(rIdx, cIdx)
 									? 'cursor-pointer ring-1 ring-amber-400/60 hover:ring-amber-400 hover:opacity-100'
 									: '',
 								effectiveTechState(rIdx, cIdx) === 'locked' ? 'opacity-50' : '',
@@ -2300,13 +2799,28 @@ watch(activePrompt, (newVal) => {
 								borderWidth: effectiveTechState(rIdx, cIdx) === 'researched' ? '2px' : '1px',
 							}"
 							:title="tech.description"
-							@click="isTechSelectionActive && isViewingSelf && effectiveTechState(rIdx, cIdx) === 'available' && effectiveTechAffordable(rIdx, cIdx) ? onSelectTech(rIdx, cIdx) : undefined"
+							@click="
+								isTechSelectionActive &&
+								isViewingSelf &&
+								effectiveTechState(rIdx, cIdx) === 'available' &&
+								effectiveTechAffordable(rIdx, cIdx)
+									? onSelectTech(rIdx, cIdx)
+									: undefined
+							"
 						>
 							<span
 								v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
 								class="text-xs font-bold mr-3 shrink-0"
-								:class="(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available' ? 'text-green-400' : 'text-amber-400/80'"
-								>{{ (activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available' ? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount)) : tech.cost }}</span
+								:class="
+									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
+										? 'text-green-400'
+										: 'text-amber-400/80'
+								"
+								>{{
+									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
+										? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
+										: tech.cost
+								}}</span
 							>
 							<span
 								class="text-sm font-semibold leading-tight truncate"
@@ -2328,267 +2842,6 @@ watch(activePrompt, (newVal) => {
 							</div>
 						</div>
 					</template>
-					<div
-						class="bg-slate-700/50 border border-slate-600/50 rounded-sm px-2 py-1 flex flex-col items-center justify-center"
-						style="grid-column: 6; grid-row: 1 / span 2"
-					>
-						<span class="text-[10px] font-semibold text-slate-200 leading-tight">Cubes</span>
-						<span class="text-lg font-bold text-slate-300">{{ viewedPlayer.cubes ?? 0 }}</span>
-					</div>
-					<div
-						class="bg-slate-700/50 border border-slate-600/50 rounded-sm px-2 py-1 flex flex-col items-center justify-center"
-						style="grid-column: 6; grid-row: 3 / span 2"
-					>
-						<span class="text-[10px] font-semibold text-slate-200 leading-tight">Gold</span>
-						<span class="text-lg font-bold text-amber-400">{{ viewedPlayer.gold ?? 0 }}</span>
-					</div>
-				</div>
-			</div>
-
-			<!-- Bottom third: building slots (left) + actions (right) -->
-			<div class="px-3 md:px-4 pb-3 md:pb-4">
-				<div class="flex flex-wrap md:flex-nowrap gap-3 md:gap-4">
-					<!-- Building slots -->
-					<div class="flex gap-2 items-start overflow-x-auto">
-						<div
-							v-for="(_, slotIdx) in 3"
-							:key="`bslot-${slotIdx}`"
-							class="w-[80px] h-[112px] rounded-lg border-2 flex flex-col items-center justify-center relative transition-all"
-							:class="[
-								viewedPlayer?.builtBuildings?.[slotIdx]
-									? viewedPlayer.activatedBuildings?.[slotIdx] && !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
-										? 'border-orange-500/30 bg-orange-900/10 opacity-50'
-										: activatingBuilding && isViewingSelf && !viewedPlayer.activatedBuildings?.[slotIdx] && !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
-											? 'border-green-400 bg-green-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
-											: 'border-orange-500/60 bg-orange-900/20'
-									: viewedBuildingSlots[slotIdx]
-										? 'border-dashed border-slate-500/60 bg-slate-700/30'
-										: 'border-dashed border-slate-700/40 bg-slate-800/30 opacity-40',
-							]"
-							@click="activatingBuilding && viewedPlayer?.builtBuildings?.[slotIdx] && isViewingSelf ? onActivateSlot(slotIdx) : undefined"
-						>
-							<template v-if="viewedPlayer?.builtBuildings?.[slotIdx]">
-								<span class="text-[10px] font-medium text-center px-1 leading-tight"
-									:class="viewedPlayer.activatedBuildings?.[slotIdx] && !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '') ? 'text-orange-500/50' : 'text-orange-300'"
-								>
-									{{ viewedPlayer.builtBuildings[slotIdx]!.name }}
-								</span>
-								<span v-if="viewedPlayer.builtBuildings[slotIdx]!.description"
-									class="text-[8px] text-center px-1 leading-tight mt-0.5"
-									:class="viewedPlayer.activatedBuildings?.[slotIdx] && !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '') ? 'text-slate-600' : 'text-slate-400'"
-								>
-									{{ viewedPlayer.builtBuildings[slotIdx]!.description }}
-								</span>
-								<span v-if="PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')"
-									class="text-[8px] text-blue-400/60 mt-1 font-medium"
-								>Permanent</span>
-								<span v-else-if="viewedPlayer.activatedBuildings?.[slotIdx]"
-									class="text-[8px] text-green-400/60 mt-1 font-medium"
-								>Used</span>
-							</template>
-							<template v-else-if="viewedBuildingSlots[slotIdx]">
-								<span class="text-[10px] text-slate-500">Empty</span>
-							</template>
-							<template v-else>
-								<IconLock :size="16" class="text-slate-600" />
-								<span class="text-[9px] text-slate-600 mt-0.5">Locked</span>
-							</template>
-						</div>
-					</div>
-
-					<!-- Built wonders -->
-					<div v-if="viewedPlayer?.builtWonders?.length" class="flex gap-2 items-start">
-						<div
-							v-for="(wonder, wIdx) in viewedPlayer.builtWonders"
-							:key="`wonder-${wIdx}`"
-							class="w-[80px] h-[112px] rounded-lg border-2 flex flex-col items-center justify-center p-2 transition-all"
-							:class="
-								activatingBuilding && isViewingSelf && wonderActivatable(wonder, wIdx)
-									? 'border-green-400 bg-purple-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
-									: wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)
-										? 'border-purple-500/30 bg-purple-900/10 opacity-50'
-										: 'border-purple-500/60 bg-purple-900/20'
-							"
-							@click="activatingBuilding && isViewingSelf ? onActivateWonder(wIdx) : undefined"
-						>
-							<span class="text-[10px] font-medium text-center px-1 leading-tight text-purple-300">
-								{{ wonder.name }}
-							</span>
-							<span v-if="wonder.description" class="text-[8px] text-center px-1 leading-tight mt-0.5 text-slate-400">
-								{{ wonder.description }}
-							</span>
-							<span v-if="wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)" class="text-[8px] text-green-400/60 mt-1 font-medium">Used</span>
-							<span v-else-if="wonderActivatable(wonder, wIdx)" class="text-[8px] text-purple-400/60 mt-1 font-medium">Activate</span>
-						</div>
-					</div>
-
-					<!-- Resource control summary -->
-					<div class="flex flex-col gap-1.5 justify-center px-2 border-l border-slate-700/40">
-						<div
-							v-for="res in (['gem', 'rock', 'game', 'wheat'] as ResourceType[])"
-							:key="res"
-							class="flex items-center gap-1.5"
-						>
-							<component
-								:is="RESOURCE_ICONS[res].icon"
-								:size="14"
-								:class="RESOURCE_ICONS[res].color"
-							/>
-							<span class="text-xs font-medium text-slate-300 w-3 text-right">{{ viewedResourceCounts[res] }}</span>
-						</div>
-					</div>
-
-					<!-- Active civilisation card -->
-					<div v-if="viewedCivCard" class="flex items-start pl-2 border-l border-r border-slate-700/40">
-						<div
-							class="w-[72px] h-[100px] rounded-lg border text-xs font-medium flex flex-col justify-between p-1.5"
-							:class="[BACK_COLOR_CLASSES[viewedCivCard.backColor], BACK_COLOR_BORDER[viewedCivCard.backColor]]"
-							:title="viewedCivCard.description ?? ''"
-						>
-							<div>
-								<div class="text-white/90 leading-tight text-[9px] font-semibold">{{ viewedCivCard.name }}</div>
-								<div v-if="viewedCivCard.description" class="text-white/50 text-[7px] leading-tight mt-0.5">{{ viewedCivCard.description }}</div>
-							</div>
-							<div class="text-white/30 text-[8px]">Era {{ viewedCivCard.era }}</div>
-						</div>
-					</div>
-
-					<!-- Action grids -->
-					<div class="flex flex-col gap-3 w-full md:w-auto md:ml-auto">
-						<!-- Invasion track -->
-						<div class="flex items-center justify-between gap-1">
-							<template v-for="(cost, idx) in INVASION_COSTS" :key="`inv-${idx}`">
-								<IconChevronRight class="text-slate-500 flex-1 shrink" :size="20" />
-								<div
-									class="w-8 h-8 rounded border flex items-center justify-center text-sm font-bold shrink-0 transition-colors"
-									:class="
-										idx < (viewedPlayer?.invasionTrackPos ?? 0)
-											? 'border-slate-700/40 bg-slate-800/30 text-slate-600 line-through'
-											: idx === (viewedPlayer?.invasionTrackPos ?? 0)
-												? 'border-red-500/60 bg-red-900/30 text-red-400'
-												: 'border-slate-600 bg-slate-700/50 text-amber-400'
-									"
-								>
-									{{ cost }}
-								</div>
-							</template>
-						</div>
-						<div class="flex flex-wrap md:flex-nowrap gap-2 md:gap-3">
-							<template v-if="!activePrompt">
-								<!-- Worker actions (2x2) -->
-								<div class="grid grid-cols-2 gap-1 flex-1 md:flex-none">
-									<button
-										v-for="action in ACTION_TYPES.slice(0, 4)"
-										:key="action.type"
-										class="px-2 py-2.5 md:py-1.5 rounded border text-xs md:text-[11px] font-medium transition-colors text-left"
-										:class="
-											isViewingSelf &&
-											isActionPhase &&
-											isMyTurn &&
-											!myPassedThisEra &&
-											!selectingTech &&
-											!isExplorerActive &&
-											!isSoldierActive &&
-											!isAgoraActive &&
-											!isActivating &&
-											!selectingWonder &&
-											isActionAvailable(action.type)
-												? 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
-												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default'
-										"
-										:disabled="
-											!(
-												isViewingSelf &&
-												isActionPhase &&
-												isMyTurn &&
-												!myPassedThisEra &&
-												!selectingTech &&
-												!isExplorerActive &&
-												!isSoldierActive &&
-												!isAgoraActive &&
-												!isActivating &&
-												!selectingWonder &&
-												isActionAvailable(action.type)
-											)
-										"
-										@click="
-											isViewingSelf &&
-												isActionPhase &&
-												isMyTurn &&
-												!myPassedThisEra &&
-												!selectingTech &&
-												!isExplorerActive &&
-												!isSoldierActive &&
-												!isAgoraActive &&
-												!isActivating &&
-												!selectingWonder &&
-												isActionAvailable(action.type) &&
-												onAction(action.type)
-										"
-									>
-										{{ action.label }}
-									</button>
-								</div>
-
-								<!-- Non-worker actions (2x2) -->
-								<div class="grid grid-cols-2 gap-1 flex-1 md:flex-none">
-									<button
-										v-for="action in ACTION_TYPES.slice(4, 8)"
-										:key="action.type"
-										class="px-2 py-2.5 md:py-1.5 rounded border text-xs md:text-[11px] font-medium transition-colors text-left"
-										:class="[
-											isViewingSelf &&
-											isActionPhase &&
-											isMyTurn &&
-											!myPassedThisEra &&
-											!selectingTech &&
-											!isExplorerActive &&
-											!isSoldierActive &&
-											!isAgoraActive &&
-											!isActivating &&
-											!selectingWonder &&
-											isActionAvailable(action.type)
-												? action.type === 'startGoldenAge'
-													? 'bg-amber-900/40 border-amber-600/50 hover:bg-amber-800/50 text-amber-200 cursor-pointer'
-													: 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
-												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default',
-										]"
-										:disabled="
-											!(
-												isViewingSelf &&
-												isActionPhase &&
-												isMyTurn &&
-												!myPassedThisEra &&
-												!selectingTech &&
-												!isExplorerActive &&
-												!isSoldierActive &&
-												!isAgoraActive &&
-												!isActivating &&
-												!selectingWonder &&
-												isActionAvailable(action.type)
-											)
-										"
-										@click="
-											isViewingSelf &&
-												isActionPhase &&
-												isMyTurn &&
-												!myPassedThisEra &&
-												!selectingTech &&
-												!isExplorerActive &&
-												!isSoldierActive &&
-												!isAgoraActive &&
-												!isActivating &&
-												!selectingWonder &&
-												isActionAvailable(action.type) &&
-												onAction(action.type)
-										"
-									>
-										{{ action.label }}
-									</button>
-								</div>
-							</template>
-						</div>
-					</div>
 				</div>
 			</div>
 		</div>
@@ -2613,17 +2866,14 @@ watch(activePrompt, (newVal) => {
 				>
 					<div class="text-white/90 leading-tight text-[10px]">{{ card.name }}</div>
 					<div v-if="card.description && card.futureTechType" class="text-white/60 text-[8px] leading-tight">{{ card.description }}</div>
-					<div v-else class="text-white/50 text-[9px] capitalize">{{ card.cardType }}</div>
+					<div v-else class="text-white/50 text-[9px]">{{ card.era ? `Era ${card.era}` : card.cardType }}</div>
 				</div>
 			</div>
 		</div>
 	</div>
 
 	<!-- Game Over overlay -->
-	<div
-		v-if="gameIsOver"
-		class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center"
-	>
+	<div v-if="gameIsOver" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center">
 		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
 			<h2 class="text-2xl font-bold text-amber-300 text-center mb-6">Game Over</h2>
 			<div class="space-y-3">
@@ -2636,17 +2886,12 @@ watch(activePrompt, (newVal) => {
 					<span class="text-lg font-bold w-7 text-center" :class="idx === 0 ? 'text-amber-300' : 'text-slate-400'">
 						{{ idx + 1 }}
 					</span>
-					<div
-						class="w-4 h-4 rounded-full shrink-0"
-						:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
-					/>
+					<div class="w-4 h-4 rounded-full shrink-0" :class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]" />
 					<span class="font-medium capitalize flex-1" :class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]">
 						{{ G!.players[r.playerId].color }}
 					</span>
 					<div class="text-right">
-						<span class="text-lg font-bold" :class="idx === 0 ? 'text-amber-200' : 'text-slate-200'">
-							{{ r.score }} VP
-						</span>
+						<span class="text-lg font-bold" :class="idx === 0 ? 'text-amber-200' : 'text-slate-200'"> {{ r.score }} VP </span>
 						<span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
 					</div>
 				</div>

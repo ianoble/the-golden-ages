@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, useTemplateRef, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useGame, loadSession, clearSession } from "@noble/bg-engine/client";
 import { gameDef, type GoldenAgesState, type GamePhase } from "../logic/game-logic";
@@ -42,6 +42,15 @@ const currentPlayerColor = computed(() => {
 	if (!cp) return null;
 	return G.value.players[cp]?.color ?? null;
 });
+
+const headerEl = ref<HTMLElement | null>(null);
+const headerHeight = ref(72);
+
+function measureHeader() {
+	if (headerEl.value) {
+		headerHeight.value = headerEl.value.offsetHeight;
+	}
+}
 
 const confirmingAbandon = ref(false);
 const gameMenuOpen = ref(false);
@@ -105,7 +114,10 @@ onMounted(() => {
 	connect(gameDef.id, props.matchID, props.playerID, creds);
 	startVotePolling();
 	document.addEventListener('click', onClickOutsideMenu);
+	nextTick(measureHeader);
 });
+
+watch([isMyTurn, currentPlayerColor, currentPhase], () => nextTick(measureHeader));
 
 onUnmounted(() => {
 	disconnect();
@@ -186,7 +198,7 @@ async function abandonGame() {
 <template>
 	<div class="min-h-screen bg-slate-900 text-white flex flex-col items-center">
 		<!-- Pinned top bar -->
-		<div class="fixed top-0 left-0 right-0 z-40 bg-slate-900 border-b border-slate-700/60">
+		<div ref="headerEl" class="fixed top-0 left-0 right-0 z-40 bg-slate-900 border-b border-slate-700/60">
 			<div class="max-w-5xl mx-auto flex flex-wrap md:flex-nowrap items-center justify-between px-3 md:px-6 py-1.5 md:py-2 gap-x-3 gap-y-0.5">
 				<router-link to="/" class="text-xs md:text-sm text-slate-500 hover:text-slate-300 transition-colors shrink-0"> &larr; Back </router-link>
 
@@ -269,7 +281,7 @@ async function abandonGame() {
 		</div>
 
 		<!-- Spacer for pinned header -->
-		<div class="h-24 md:h-20" />
+		<div :style="{ height: headerHeight + 8 + 'px' }" />
 
 		<div class="w-full flex flex-col items-center p-2 md:p-6">
 			<!-- Game over banner -->
@@ -285,7 +297,7 @@ async function abandonGame() {
 			</div>
 
 			<!-- Game board -->
-			<GameBoard v-if="!reconnecting" />
+			<GameBoard v-if="!reconnecting" :header-height="headerHeight" />
 		</div>
 
 		<!-- Abandon vote overlay (multi-human games) -->
