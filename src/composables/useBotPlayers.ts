@@ -1,7 +1,7 @@
 import { onUnmounted, watch, type Ref } from 'vue';
 import { Client } from 'boardgame.io/client';
 import { SocketIO } from 'boardgame.io/multiplayer';
-import { getTileAt } from '../noble-bg-engine/packages/engine/src/client';
+import { getTileAt } from '@engine/client';
 import {
 	gameDef,
 	ERA_TILE_SHAPES,
@@ -14,7 +14,7 @@ import {
 	type Era,
 	type BoardPiece,
 } from '../logic/game-logic';
-import type { TileRotation } from '../noble-bg-engine/packages/engine/src/client';
+import type { TileRotation } from '@engine/client';
 import { SERVER_URL } from '../config';
 
 interface BotClient {

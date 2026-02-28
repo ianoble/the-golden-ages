@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted } from "vue";
-import { useGame, SquareGrid, getTileAt, rotateTileOffsets, type TileRotation } from "../noble-bg-engine/packages/engine/src/client";
+import { useGame, SquareGrid, getTileAt, rotateTileOffsets, type TileRotation } from "@engine/client";
 import {
 	IconChevronRight,
 	IconDiamond,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { saveSession, loadSession } from '../noble-bg-engine/packages/engine/src/client';
+import { saveSession, loadSession } from '@engine/client';
 import { gameDef } from '../logic/game-logic';
 import { SERVER_URL } from '../config';
 import { useAuth, syncSessionToServer, fetchServerSessions } from '../composables/useAuth';

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, useTemplateRef, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
-import { useGame, loadSession, clearSession } from "../noble-bg-engine/packages/engine/src/client";
+import { useGame, loadSession, clearSession } from "@engine/client";
 import { gameDef, type GoldenAgesState, type GamePhase } from "../logic/game-logic";
 import { useBotPlayers } from "../composables/useBotPlayers";
 import GameBoard from "../components/GameBoard.vue";

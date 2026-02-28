@@ -1,10 +1,10 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import { registerGame } from '../noble-bg-engine/packages/engine/src/client';
+import { registerGame } from '@engine/client';
 import App from './App.vue';
 import { router } from './router';
 import { gameDef } from './logic/game-logic';
-import '../noble-bg-engine/packages/engine/src/styles/core.css';
+import '@engine/styles/core.css';
 import './style.css';
 
 registerGame(gameDef);
