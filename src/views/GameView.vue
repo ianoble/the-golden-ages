@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, useTemplateRef, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
-import { useGame, loadSession, clearSession } from "@engine/client";
+import { useGame, useTurnNotifications, loadSession, clearSession } from "@engine/client";
 import { gameDef, type GoldenAgesState, type GamePhase } from "../logic/game-logic";
 import { useBotPlayers } from "../composables/useBotPlayers";
 import GameBoard from "../components/GameBoard.vue";
@@ -43,13 +43,10 @@ const currentPlayerColor = computed(() => {
 	return G.value.players[cp]?.color ?? null;
 });
 
-const notificationsSupported = computed(
-	() => typeof window !== "undefined" && "Notification" in window
-);
-const notificationPermission = ref<NotificationPermission>("denied");
-function syncNotificationPermission() {
-	if (notificationsSupported.value) notificationPermission.value = Notification.permission;
-}
+const { requestPermission: requestTurnNotifications, permission: notificationPermission, supported: notificationsSupported } = useTurnNotifications({
+	displayName: gameDef.displayName,
+	icon: "/favicon.ico",
+});
 
 const headerEl = ref<HTMLElement | null>(null);
 const headerHeight = ref(72);
@@ -69,47 +66,21 @@ let cueTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const CUE_DURATION_MS = 2500;
 
-function showTurnNotificationIfAllowed() {
-	if (typeof window === "undefined" || !("Notification" in window)) return;
-	if (!document.hidden) return;
-	if (Notification.permission !== "granted") return;
-
-	try {
-		const n = new Notification(gameDef.displayName, {
-			body: "It's your turn!",
-			icon: "/favicon.ico",
-			tag: "tga-turn",
-			requireInteraction: false,
-		});
-		n.onclick = () => {
-			window.focus();
-			n.close();
-		};
-	} catch {
-		// Ignore if notification fails (e.g. in some iframes)
-	}
-}
-
-function requestTurnNotifications() {
-	if (typeof window === "undefined" || !("Notification" in window)) return;
-	if (Notification.permission === "granted") return;
-	if (Notification.permission === "denied") return;
-
-	Notification.requestPermission().then((permission) => {
-		syncNotificationPermission();
-		if (permission === "granted") {
-			try {
-				const n = new Notification(gameDef.displayName, {
-					body: "You'll get notified when it's your turn.",
-					icon: "/favicon.ico",
-					tag: "tga-notify-on",
-				});
-				setTimeout(() => n.close(), 4000);
-			} catch {
-				// ignore
-			}
+async function onEnableTurnNotifications() {
+	const p = await requestTurnNotifications();
+	if (p === "granted") {
+		try {
+			const n = new Notification(gameDef.displayName, {
+				body: "You'll get notified when it's your turn.",
+				icon: "/favicon.ico",
+				tag: "tga-notify-on",
+			});
+			setTimeout(() => n.close(), 4000);
+		} catch {
+			// ignore
 		}
-	});
+	}
+	closeGameMenu();
 }
 
 watch(
@@ -139,8 +110,6 @@ watch(
 				turnCueVisible.value = false;
 				cueTimeout = null;
 			}, CUE_DURATION_MS);
-			// Browser notification when tab is in background
-			showTurnNotificationIfAllowed();
 		} else if (newPhase !== wasPhase) {
 			turnCueMessage.value = PHASE_LABELS[newPhase];
 			turnCueVisible.value = true;
@@ -217,9 +186,8 @@ onMounted(() => {
 	startVotePolling();
 	document.addEventListener('click', onClickOutsideMenu);
 	nextTick(measureHeader);
-	syncNotificationPermission();
 	// Ask for notification permission after a short delay so user can allow before switching tabs
-	setTimeout(requestTurnNotifications, 2000);
+	setTimeout(() => requestTurnNotifications(), 2000);
 });
 
 watch([isMyTurn, currentPlayerColor, currentPhase], () => nextTick(measureHeader));
@@ -349,7 +317,7 @@ async function abandonGame() {
 								v-if="notificationsSupported && notificationPermission !== 'granted'"
 								type="button"
 								class="flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors w-full text-left border-t border-slate-700/50"
-								@click="requestTurnNotifications(); closeGameMenu()"
+								@click="onEnableTurnNotifications"
 							>
 								<svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
 								Notify when it's my turn

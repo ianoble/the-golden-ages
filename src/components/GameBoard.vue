@@ -26,8 +26,8 @@ import {
 const props = withDefaults(defineProps<{ headerHeight?: number }>(), { headerHeight: 72 });
 // const emit = defineEmits<{ backToLobby: [] }>();
 import {
-  // gameDef, // unused
-  ERA_TILE_SHAPES,
+	// gameDef, // unused
+	ERA_TILE_SHAPES,
 	ROTATIONS,
 	PLAYER_COLORS,
 	ACTION_TYPES,
@@ -667,8 +667,8 @@ const playersAtTrackPosition = computed(() => {
 	for (const p of Object.values(G.value.players)) {
 		const pos = (p.score ?? 0) % TRACK_CELLS;
 		if (!map.has(pos)) map.set(pos, []);
-    const arr = map.get(pos);
-    if (arr) arr.push(p.color);
+		const arr = map.get(pos);
+		if (arr) arr.push(p.color);
 	}
 	return map;
 });
@@ -686,8 +686,8 @@ const playersInRevealOrder = computed(() => {
 	if (!G.value?.players) return [];
 	const order = Object.keys(G.value.players).sort();
 	return order.map((pid) => {
-    const cityCount = G.value?.cities.filter((c) => c.owner === pid).length ?? 0;
-    return { playerId: pid, score: G.value?.players?.[pid]?.score ?? 0, cities: cityCount };
+		const cityCount = G.value?.cities.filter((c) => c.owner === pid).length ?? 0;
+		return { playerId: pid, score: G.value?.players?.[pid]?.score ?? 0, cities: cityCount };
 	});
 });
 const revealedScoresCount = ref(0);
@@ -765,25 +765,15 @@ const MOVE_LABELS: Record<string, string> = {
 };
 
 const gameLogEntries = computed<DisplayLogEntry[]>(() => {
-	const raw = G.value?.history;
+	const raw = G.value?.gameLog;
 	if (!raw || !Array.isArray(raw)) return [];
 
 	const entries: DisplayLogEntry[] = [];
 	for (const item of raw) {
-		const rec = item as Record<string, unknown>;
-		if (typeof rec.message === "string" && rec.message) {
+		if (item.message) {
 			entries.push({
-				message: rec.message,
-				playerColor: typeof rec.playerColor === "string" ? rec.playerColor : undefined,
-			});
-		} else if (typeof rec.moveName === "string") {
-			const pid = typeof rec.playerID === "string" ? rec.playerID : null;
-			const color = pid && G.value?.players?.[pid]?.color;
-			const prev = entries[entries.length - 1];
-			if (prev && prev.playerColor === (color || undefined)) continue;
-			entries.push({
-				message: MOVE_LABELS[rec.moveName] ?? rec.moveName,
-				playerColor: color || undefined,
+				message: item.message,
+				playerColor: item.playerColor,
 			});
 		}
 	}
@@ -937,10 +927,10 @@ function isActionAvailable(actionType: ActionType): boolean {
 		if (!hasAvailableWorkers.value && !canBuilderWorkerless.value) return false;
 		if (!myPlayer.value) return false;
 		const slots = getUnlockedBuildingSlots(myPlayer.value);
-    return slots.some((unlocked, i) => unlocked && myPlayer.value?.builtBuildings?.[i] === null) && availableBuildings.value.length > 0;
+		return slots.some((unlocked, i) => unlocked && myPlayer.value?.builtBuildings?.[i] === null) && availableBuildings.value.length > 0;
 	}
 	if (actionType === "buildWonder") {
-		if (!myPlayer.value || availableWonders.value.length === 0) return false;
+		if (!myPlayer.value || !playerID.value || availableWonders.value.length === 0) return false;
 		const p = myPlayer.value;
     const isGreece = G.value?.activeCivCard?.[playerID.value]?.civType === "greece";
 		if (isGreece && !p.usedGreeceWonder) return true;
@@ -1914,1680 +1904,1680 @@ watch(activePrompt, (newVal) => {
 </script>
 
 <template>
-  <!-- Game log flyout from the left -->
-  <Teleport to="body">
-    <div class="fixed left-0 top-0 bottom-0 z-20 flex pointer-events-none">
-      <!-- Tab to open (always visible when panel closed) -->
-      <button
-        type="button"
-        class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-24 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
-        :class="gameLogOpen ? 'opacity-0 pointer-events-none' : ''"
-        title="Open game log"
-        @click="gameLogOpen = true"
-      >
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      </button>
-      <!-- Backdrop when open -->
-      <div
-        v-show="gameLogOpen"
-        class="pointer-events-auto fixed inset-0 bg-black/40 transition-opacity"
-        aria-hidden="true"
-        @click="gameLogOpen = false"
-      />
-      <!-- Sliding panel -->
-      <Transition name="log-slide">
-        <div
-          v-show="gameLogOpen"
-          class="pointer-events-auto absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] flex flex-col bg-slate-800 border-r border-slate-600/60 shadow-xl"
-        >
-          <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-600/50 shrink-0">
-            <h3 class="text-sm font-semibold text-slate-200">Game log</h3>
-            <span class="text-slate-500 text-xs">{{ gameLogEntries.length }} entries</span>
-            <button
-              type="button"
-              class="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
-              title="Close"
-              @click="gameLogOpen = false"
-            >
-              <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-              </svg>
-            </button>
-          </div>
-          <div class="overflow-y-auto flex-1 min-h-0 p-2 space-y-1 text-xs">
-            <template v-if="gameLogEntries.length === 0">
-              <p class="text-slate-500 italic py-4">No actions yet.</p>
-            </template>
-            <div
-              v-for="(entry, i) in [...gameLogEntries].reverse()"
-              :key="`log-${i}-${entry.message}`"
-              class="py-1.5 px-2 rounded bg-slate-700/50"
-              style="color: #cbd5e1"
-            >
-              <span
-                v-if="entry.playerColor"
-                class="capitalize font-medium"
-                :style="{ color: PLAYER_COLOR_HEX[entry.playerColor] ?? '#cbd5e1' }"
-              >{{ entry.playerColor }}: </span>
-              <span>{{ entry.message }}</span>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </div>
-  </Teleport>
+	<!-- Game log flyout from the left -->
+	<Teleport to="body">
+		<div class="fixed left-0 top-0 bottom-0 z-20 flex pointer-events-none">
+			<!-- Tab to open (always visible when panel closed) -->
+			<button
+				type="button"
+				class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-24 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
+				:class="gameLogOpen ? 'opacity-0 pointer-events-none' : ''"
+				title="Open game log"
+				@click="gameLogOpen = true"
+			>
+				<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+			</button>
+			<!-- Backdrop when open -->
+			<div
+				v-show="gameLogOpen"
+				class="pointer-events-auto fixed inset-0 bg-black/40 transition-opacity"
+				aria-hidden="true"
+				@click="gameLogOpen = false"
+			/>
+			<!-- Sliding panel -->
+			<Transition name="log-slide">
+				<div
+					v-show="gameLogOpen"
+					class="pointer-events-auto absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] flex flex-col bg-slate-800 border-r border-slate-600/60 shadow-xl"
+				>
+					<div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-600/50 shrink-0">
+						<h3 class="text-sm font-semibold text-slate-200">Game log</h3>
+						<span class="text-slate-500 text-xs">{{ gameLogEntries.length }} entries</span>
+						<button
+							type="button"
+							class="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+							title="Close"
+							@click="gameLogOpen = false"
+						>
+							<svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+							</svg>
+						</button>
+					</div>
+					<div class="overflow-y-auto flex-1 min-h-0 p-2 space-y-1 text-xs">
+						<template v-if="gameLogEntries.length === 0">
+							<p class="text-slate-500 italic py-4">No actions yet.</p>
+						</template>
+						<div
+							v-for="(entry, i) in [...gameLogEntries].reverse()"
+							:key="`log-${i}-${entry.message}`"
+							class="py-1.5 px-2 rounded bg-slate-700/50"
+							style="color: #cbd5e1"
+						>
+							<span
+								v-if="entry.playerColor"
+								class="capitalize font-medium"
+								:style="{ color: PLAYER_COLOR_HEX[entry.playerColor] ?? '#cbd5e1' }"
+							>{{ entry.playerColor }}: </span>
+							<span>{{ entry.message }}</span>
+						</div>
+					</div>
+				</div>
+			</Transition>
+		</div>
+	</Teleport>
 
-  <!-- Pinned prompt banner (fixed below header) -->
-  <Teleport to="body">
-    <div
-      v-if="activePrompt"
-      class="fixed left-0 right-0 z-30 bg-slate-800/95 border-b border-amber-600/40 backdrop-blur-sm"
-      :style="{ top: props.headerHeight + 'px' }"
-    >
-      <div class="max-w-5xl mx-auto px-3 md:px-6 py-2 md:py-3 flex flex-wrap items-center justify-center gap-2 md:gap-4">
-        <!-- Capital relocation -->
-        <template v-if="activePrompt === 'capitalMove'">
-          <p class="text-xs md:text-sm text-slate-200 font-medium">
-            Move your capital and workers to the new tile?
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
-            @click="confirmPlacement(true)"
-          >
-            Yes, move capital
-          </button>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
-            @click="confirmPlacement(false)"
-          >
-            No, keep it
-          </button>
-          <button
-            class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            @click="cancelPlacement"
-          >
-            Cancel
-          </button>
-        </template>
+	<!-- Pinned prompt banner (fixed below header) -->
+	<Teleport to="body">
+		<div
+			v-if="activePrompt"
+			class="fixed left-0 right-0 z-30 bg-slate-800/95 border-b border-amber-600/40 backdrop-blur-sm"
+			:style="{ top: props.headerHeight + 'px' }"
+		>
+			<div class="max-w-5xl mx-auto px-3 md:px-6 py-2 md:py-3 flex flex-wrap items-center justify-center gap-2 md:gap-4">
+				<!-- Capital relocation -->
+				<template v-if="activePrompt === 'capitalMove'">
+					<p class="text-xs md:text-sm text-slate-200 font-medium">
+						Move your capital and workers to the new tile?
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						@click="confirmPlacement(true)"
+					>
+						Yes, move capital
+					</button>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						@click="confirmPlacement(false)"
+					>
+						No, keep it
+					</button>
+					<button
+						class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+						@click="cancelPlacement"
+					>
+						Cancel
+					</button>
+				</template>
 
-        <!-- City founding -->
-        <template v-else-if="activePrompt === 'foundCity'">
-          <p class="text-xs md:text-sm text-slate-200 font-medium">
-            Found a city here?
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs md:text-sm font-medium transition-colors"
-            @click="onConfirmCity(true)"
-          >
-            Yes
-          </button>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
-            @click="onConfirmCity(false)"
-          >
-            No
-          </button>
-        </template>
+				<!-- City founding -->
+				<template v-else-if="activePrompt === 'foundCity'">
+					<p class="text-xs md:text-sm text-slate-200 font-medium">
+						Found a city here?
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs md:text-sm font-medium transition-colors"
+						@click="onConfirmCity(true)"
+					>
+						Yes
+					</button>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						@click="onConfirmCity(false)"
+					>
+						No
+					</button>
+				</template>
 
-        <!-- Soldier attack confirmation -->
-        <template v-else-if="activePrompt === 'soldierAttack'">
-          <p class="text-xs md:text-sm font-medium" :class="canAffordSoldierAttack ? 'text-red-300' : 'text-amber-300'">
-            <template v-if="canAffordSoldierAttack">
-              Attack for {{ soldierAttackCost }} gold?
-            </template>
-            <template v-else>
-              Not enough gold (need {{ soldierAttackCost }}, have {{ myPlayer?.gold ?? 0 }})
-            </template>
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors"
-            :class="canAffordSoldierAttack
-              ? 'bg-red-700 hover:bg-red-600 text-white'
-              : 'bg-slate-700 text-slate-500 cursor-not-allowed'"
-            :disabled="!canAffordSoldierAttack"
-            @click="onConfirmAttack(true)"
-          >
-            Attack
-          </button>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
-            @click="onConfirmAttack(false)"
-          >
-            Cancel
-          </button>
-        </template>
+				<!-- Soldier attack confirmation -->
+				<template v-else-if="activePrompt === 'soldierAttack'">
+					<p class="text-xs md:text-sm font-medium" :class="canAffordSoldierAttack ? 'text-red-300' : 'text-amber-300'">
+						<template v-if="canAffordSoldierAttack">
+							Attack for {{ soldierAttackCost }} gold?
+						</template>
+						<template v-else>
+							Not enough gold (need {{ soldierAttackCost }}, have {{ myPlayer?.gold ?? 0 }})
+						</template>
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors"
+						:class="canAffordSoldierAttack
+							? 'bg-red-700 hover:bg-red-600 text-white'
+							: 'bg-slate-700 text-slate-500 cursor-not-allowed'"
+						:disabled="!canAffordSoldierAttack"
+						@click="onConfirmAttack(true)"
+					>
+						Attack
+					</button>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						@click="onConfirmAttack(false)"
+					>
+						Cancel
+					</button>
+				</template>
 
-        <!-- Soldier city founding after combat -->
-        <template v-else-if="activePrompt === 'soldierCity'">
-          <p class="text-xs md:text-sm text-slate-200 font-medium">
-            Found a city here?
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
-            @click="onSoldierConfirmCity(true)"
-          >
-            Yes
-          </button>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
-            @click="onSoldierConfirmCity(false)"
-          >
-            No
-          </button>
-        </template>
+				<!-- Soldier city founding after combat -->
+				<template v-else-if="activePrompt === 'soldierCity'">
+					<p class="text-xs md:text-sm text-slate-200 font-medium">
+						Found a city here?
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
+						@click="onSoldierConfirmCity(true)"
+					>
+						Yes
+					</button>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						@click="onSoldierConfirmCity(false)"
+					>
+						No
+					</button>
+				</template>
 
-        <!-- India tech selection -->
-        <template v-else-if="activePrompt === 'indiaSelect'">
-          <p class="text-xs md:text-sm text-purple-300 font-medium shrink-0">
-            Choose a level 5 technology:
-          </p>
-          <div class="flex flex-wrap md:flex-nowrap gap-2">
-            <button
-              v-for="(row, rIdx) in TECH_TREE"
-              :key="`india-${rIdx}`"
-              class="px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors"
-              :class="
-                myPlayer?.researchedTechs[rIdx][4]
-                  ? 'bg-slate-700/40 text-slate-500 cursor-default'
-                  : 'bg-purple-700 hover:bg-purple-600 cursor-pointer'
-              "
-              :disabled="myPlayer?.researchedTechs[rIdx][4] ?? false"
-              @click="!myPlayer?.researchedTechs[rIdx][4] && onIndiaSelectTech(rIdx)"
-            >
-              {{ row[4].name }}
-            </button>
-          </div>
-          <button
-            class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            @click="onCancelIndia"
-          >
-            Cancel
-          </button>
-        </template>
+				<!-- India tech selection -->
+				<template v-else-if="activePrompt === 'indiaSelect'">
+					<p class="text-xs md:text-sm text-purple-300 font-medium shrink-0">
+						Choose a level 5 technology:
+					</p>
+					<div class="flex flex-wrap md:flex-nowrap gap-2">
+						<button
+							v-for="(row, rIdx) in TECH_TREE"
+							:key="`india-${rIdx}`"
+							class="px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors"
+							:class="
+								myPlayer?.researchedTechs[rIdx][4]
+									? 'bg-slate-700/40 text-slate-500 cursor-default'
+									: 'bg-purple-700 hover:bg-purple-600 cursor-pointer'
+							"
+							:disabled="myPlayer?.researchedTechs[rIdx][4] ?? false"
+							@click="!myPlayer?.researchedTechs[rIdx][4] && onIndiaSelectTech(rIdx)"
+						>
+							{{ row[4].name }}
+						</button>
+					</div>
+					<button
+						class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+						@click="onCancelIndia"
+					>
+						Cancel
+					</button>
+				</template>
 
-        <!-- Greece free wonder choice -->
-        <template v-else-if="activePrompt === 'greeceWonder'">
-          <p class="text-xs md:text-sm text-purple-300 font-medium shrink-0">
-            Build
-            <span class="text-purple-100 font-semibold">{{ availableWonders.find((c) => c.id === greeceWonderPending)?.name }}</span> —
-            use Greece ability (free, once per game)?
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
-            @click="onGreeceWonderChoice(true)"
-          >
-            Build Free
-          </button>
-          <button
-            v-if="(myPlayer?.gold ?? 0) >= getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)"
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
-            @click="onGreeceWonderChoice(false)"
-          >
-            Pay {{ getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!) }}g
-          </button>
-          <button
-            class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-            @click="onCancelGreeceChoice"
-          >
-            Cancel
-          </button>
-        </template>
+				<!-- Greece free wonder choice -->
+				<template v-else-if="activePrompt === 'greeceWonder'">
+					<p class="text-xs md:text-sm text-purple-300 font-medium shrink-0">
+						Build
+						<span class="text-purple-100 font-semibold">{{ availableWonders.find((c) => c.id === greeceWonderPending)?.name }}</span> —
+						use Greece ability (free, once per game)?
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onGreeceWonderChoice(true)"
+					>
+						Build Free
+					</button>
+					<button
+						v-if="(myPlayer?.gold ?? 0) >= getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)"
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onGreeceWonderChoice(false)"
+					>
+						Pay {{ getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!) }}g
+					</button>
+					<button
+						class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+						@click="onCancelGreeceChoice"
+					>
+						Cancel
+					</button>
+				</template>
 
-        <!-- Golden Age only option info -->
-        <template v-else-if="activePrompt === 'goldenAgeOnly'">
-          <p class="text-xs md:text-sm text-slate-200 font-medium">
-            Your only available action is to start a Golden Age.
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
-            @click="dismissGoldenAgeOnlyPrompt"
-          >
-            OK
-          </button>
-        </template>
+				<!-- Golden Age only option info -->
+				<template v-else-if="activePrompt === 'goldenAgeOnly'">
+					<p class="text-xs md:text-sm text-slate-200 font-medium">
+						Your only available action is to start a Golden Age.
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						@click="dismissGoldenAgeOnlyPrompt"
+					>
+						OK
+					</button>
+				</template>
 
-        <!-- Confirm Golden Age -->
-        <template v-else-if="activePrompt === 'confirmGoldenAge'">
-          <p class="text-xs md:text-sm text-amber-300 font-medium">
-            Start a Golden Age? You will not be able to take actions for the rest of this era.
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
-            @click="onConfirmGoldenAge"
-          >
-            Yes
-          </button>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors cursor-pointer"
-            @click="onCancelGoldenAge"
-          >
-            Cancel
-          </button>
-        </template>
+				<!-- Confirm Golden Age -->
+				<template v-else-if="activePrompt === 'confirmGoldenAge'">
+					<p class="text-xs md:text-sm text-amber-300 font-medium">
+						Start a Golden Age? You will not be able to take actions for the rest of this era.
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onConfirmGoldenAge"
+					>
+						Yes
+					</button>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						@click="onCancelGoldenAge"
+					>
+						Cancel
+					</button>
+				</template>
 
-        <!-- Collect golden age income -->
-        <template v-else-if="activePrompt === 'collectIncome'">
-          <p class="text-xs md:text-sm text-slate-200 font-medium">
-            You are in a Golden Age.
-          </p>
-          <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
-            @click="onCollectIncome"
-          >
-            Collect 2 Gold
-          </button>
-        </template>
+				<!-- Collect golden age income -->
+				<template v-else-if="activePrompt === 'collectIncome'">
+					<p class="text-xs md:text-sm text-slate-200 font-medium">
+						You are in a Golden Age.
+					</p>
+					<button
+						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						@click="onCollectIncome"
+					>
+						Collect 2 Gold
+					</button>
+				</template>
 
-        <!-- Pick History's Judgement card -->
-        <template v-else-if="activePrompt === 'pickHistory'">
-          <p class="text-xs md:text-sm text-amber-300 font-medium shrink-0">
-            Pick a History's Judgement card:
-          </p>
-          <div class="flex gap-2 overflow-x-auto">
-            <button
-              v-for="card in historyCards"
-              :key="card.id"
-              class="w-[90px] h-[126px] rounded-lg border-2 bg-gray-700 border-gray-500 text-xs font-medium shrink-0 flex flex-col justify-between p-2 hover:border-amber-400 hover:bg-gray-600 transition-colors cursor-pointer"
-              @click="onPickHistoryCard(card.id)"
-            >
-              <div>
-                <div class="text-amber-300 font-bold leading-tight text-[10px]">
-                  {{ card.name }}
-                </div>
-                <div class="text-gray-300 leading-tight text-[8px] mt-1">
-                  {{ card.description }}
-                </div>
-              </div>
-              <div class="text-gray-500 text-[8px]">
-                Judgement
-              </div>
-            </button>
-          </div>
-          <button
-            class="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0"
-            @click="onCancelHistoryPick"
-          >
-            Cancel
-          </button>
-        </template>
-      </div>
-    </div>
-  </Teleport>
+				<!-- Pick History's Judgement card -->
+				<template v-else-if="activePrompt === 'pickHistory'">
+					<p class="text-xs md:text-sm text-amber-300 font-medium shrink-0">
+						Pick a History's Judgement card:
+					</p>
+					<div class="flex gap-2 overflow-x-auto">
+						<button
+							v-for="card in historyCards"
+							:key="card.id"
+							class="w-[90px] h-[126px] rounded-lg border-2 bg-gray-700 border-gray-500 text-xs font-medium shrink-0 flex flex-col justify-between p-2 hover:border-amber-400 hover:bg-gray-600 transition-colors cursor-pointer"
+							@click="onPickHistoryCard(card.id)"
+						>
+							<div>
+								<div class="text-amber-300 font-bold leading-tight text-[10px]">
+									{{ card.name }}
+								</div>
+								<div class="text-gray-300 leading-tight text-[8px] mt-1">
+									{{ card.description }}
+								</div>
+							</div>
+							<div class="text-gray-500 text-[8px]">
+								Judgement
+							</div>
+						</button>
+					</div>
+					<button
+						class="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+						@click="onCancelHistoryPick"
+					>
+						Cancel
+					</button>
+				</template>
+			</div>
+		</div>
+	</Teleport>
 
-  <!-- Spacer to push content below the fixed prompt banner -->
-  <div
-    v-if="activePrompt"
-    class="h-10 md:h-12"
-  />
+	<!-- Spacer to push content below the fixed prompt banner -->
+	<div
+		v-if="activePrompt"
+		class="h-10 md:h-12"
+	/>
 
-  <div
-    v-if="G?.board"
-    class="flex flex-col items-center gap-4 md:gap-6 w-full max-w-5xl mx-auto px-2 md:px-0"
-  >
-    <!-- Tile placement controls -->
-    <div
-      v-if="isTilePlacement && isMyTurn"
-      class="flex items-center gap-4"
-    >
-      <span class="text-sm text-slate-400">Your tile:</span>
+	<div
+		v-if="G?.board"
+		class="flex flex-col items-center gap-4 md:gap-6 w-full max-w-5xl mx-auto px-2 md:px-0"
+	>
+		<!-- Tile placement controls -->
+		<div
+			v-if="isTilePlacement && isMyTurn"
+			class="flex items-center gap-4"
+		>
+			<span class="text-sm text-slate-400">Your tile:</span>
 
-      <div
-        class="inline-grid gap-px"
-        :style="{
-          gridTemplateColumns: `repeat(${previewShapeBounds.cols}, 40px)`,
-          gridTemplateRows: `repeat(${previewShapeBounds.rows}, 40px)`,
-        }"
-      >
-        <template
-          v-for="r in previewShapeBounds.rows"
-          :key="r"
-        >
-          <div
-            v-for="c in previewShapeBounds.cols"
-            :key="`${r},${c}`"
-            class="rounded-sm flex items-center justify-center relative"
-            :class="previewShapeSet.has(`${r - 1},${c - 1}`) ? 'bg-green-700/50 border border-green-500/60' : 'bg-transparent'"
-          >
-            <template v-if="previewTileEdges.has(`${r - 1},${c - 1}`)">
-              <div
-                v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[0]"
-                class="absolute top-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10"
-              />
-              <div
-                v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[1]"
-                class="absolute top-0 right-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10"
-              />
-              <div
-                v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[2]"
-                class="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10"
-              />
-              <div
-                v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[3]"
-                class="absolute top-0 left-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10"
-              />
-            </template>
-            <template v-if="previewTileResources.has(`${r - 1},${c - 1}`)">
-              <template v-if="previewTileResources.get(`${r - 1},${c - 1}`)!.length === 1">
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-                  <component
-                    :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
-                    :size="28"
-                    :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
-                  />
-                </div>
-              </template>
-              <template v-else>
-                <component
-                  :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
-                  :size="22"
-                  :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
-                  class="absolute pointer-events-none select-none"
-                  style="top: 15%; left: 15%"
-                />
-                <component
-                  :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![1]].icon"
-                  :size="22"
-                  :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![1]].color"
-                  class="absolute pointer-events-none select-none"
-                  style="bottom: 15%; right: 15%"
-                />
-              </template>
-            </template>
-          </div>
-        </template>
-      </div>
+			<div
+				class="inline-grid gap-px"
+				:style="{
+					gridTemplateColumns: `repeat(${previewShapeBounds.cols}, 40px)`,
+					gridTemplateRows: `repeat(${previewShapeBounds.rows}, 40px)`,
+				}"
+			>
+				<template
+					v-for="r in previewShapeBounds.rows"
+					:key="r"
+				>
+					<div
+						v-for="c in previewShapeBounds.cols"
+						:key="`${r},${c}`"
+						class="rounded-sm flex items-center justify-center relative"
+						:class="previewShapeSet.has(`${r - 1},${c - 1}`) ? 'bg-green-700/50 border border-green-500/60' : 'bg-transparent'"
+					>
+						<template v-if="previewTileEdges.has(`${r - 1},${c - 1}`)">
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[0]"
+								class="absolute top-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[1]"
+								class="absolute top-0 right-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[2]"
+								class="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+							<div
+								v-if="waterEdges(previewTileEdges.get(`${r - 1},${c - 1}`))[3]"
+								class="absolute top-0 left-0 bottom-0 w-[2px] bg-blue-400/70 pointer-events-none z-10"
+							/>
+						</template>
+						<template v-if="previewTileResources.has(`${r - 1},${c - 1}`)">
+							<template v-if="previewTileResources.get(`${r - 1},${c - 1}`)!.length === 1">
+								<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+									<component
+										:is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
+										:size="28"
+										:class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
+									/>
+								</div>
+							</template>
+							<template v-else>
+								<component
+									:is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
+									:size="22"
+									:class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
+									class="absolute pointer-events-none select-none"
+									style="top: 15%; left: 15%"
+								/>
+								<component
+									:is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![1]].icon"
+									:size="22"
+									:class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![1]].color"
+									class="absolute pointer-events-none select-none"
+									style="bottom: 15%; right: 15%"
+								/>
+							</template>
+						</template>
+					</div>
+				</template>
+			</div>
 
-      <div class="flex items-center gap-1">
-        <button
-          class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700 transition-colors flex items-center justify-center"
-          title="Rotate counter-clockwise"
-          @click="cycleRotation(-1)"
-        >
-          &#x21BA;
-        </button>
-        <span class="text-xs text-slate-500 w-8 text-center">{{ rotation }}&deg;</span>
-        <button
-          class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700 transition-colors flex items-center justify-center"
-          title="Rotate clockwise"
-          @click="cycleRotation(1)"
-        >
-          &#x21BB;
-        </button>
-      </div>
-    </div>
+			<div class="flex items-center gap-1">
+				<button
+					class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700 transition-colors flex items-center justify-center"
+					title="Rotate counter-clockwise"
+					@click="cycleRotation(-1)"
+				>
+					&#x21BA;
+				</button>
+				<span class="text-xs text-slate-500 w-8 text-center">{{ rotation }}&deg;</span>
+				<button
+					class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700 transition-colors flex items-center justify-center"
+					title="Rotate clockwise"
+					@click="cycleRotation(1)"
+				>
+					&#x21BB;
+				</button>
+			</div>
+		</div>
 
-    <!-- Era Start: civilisation card choice -->
-    <div
-      v-if="isEraStart && isMyTurn"
-      class="w-full p-3 md:p-4 bg-slate-800 border border-green-600/50 rounded-xl"
-    >
-      <template v-if="currentEra === 'I'">
-        <h3 class="text-sm font-medium text-green-300 mb-2">
-          Reveal your Civilisation Card
-        </h3>
-        <div
-          v-if="myEraCard"
-          class="flex items-center gap-4"
-        >
-          <div
-            class="w-[90px] h-[126px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
-            :class="[BACK_COLOR_CLASSES[myEraCard.backColor], BACK_COLOR_BORDER[myEraCard.backColor]]"
-          >
-            <div>
-              <div class="text-white/90 leading-tight text-[10px] font-semibold">
-                {{ myEraCard.name }}
-              </div>
-              <div
-                v-if="myEraCard.description"
-                class="text-white/60 text-[8px] leading-tight mt-1"
-              >
-                {{ myEraCard.description }}
-              </div>
-            </div>
-            <div class="text-white/40 text-[9px]">
-              #{{ myEraCard.number }}
-            </div>
-          </div>
-          <button
-            class="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors"
-            @click="onChooseCivCard(false)"
-          >
-            Reveal &amp; Confirm
-          </button>
-        </div>
-      </template>
+		<!-- Era Start: civilisation card choice -->
+		<div
+			v-if="isEraStart && isMyTurn"
+			class="w-full p-3 md:p-4 bg-slate-800 border border-green-600/50 rounded-xl"
+		>
+			<template v-if="currentEra === 'I'">
+				<h3 class="text-sm font-medium text-green-300 mb-2">
+					Reveal your Civilisation Card
+				</h3>
+				<div
+					v-if="myEraCard"
+					class="flex items-center gap-4"
+				>
+					<div
+						class="w-[90px] h-[126px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
+						:class="[BACK_COLOR_CLASSES[myEraCard.backColor], BACK_COLOR_BORDER[myEraCard.backColor]]"
+					>
+						<div>
+							<div class="text-white/90 leading-tight text-[10px] font-semibold">
+								{{ myEraCard.name }}
+							</div>
+							<div
+								v-if="myEraCard.description"
+								class="text-white/60 text-[8px] leading-tight mt-1"
+							>
+								{{ myEraCard.description }}
+							</div>
+						</div>
+						<div class="text-white/40 text-[9px]">
+							#{{ myEraCard.number }}
+						</div>
+					</div>
+					<button
+						class="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors"
+						@click="onChooseCivCard(false)"
+					>
+						Reveal &amp; Confirm
+					</button>
+				</div>
+			</template>
 
-      <template v-else>
-        <h3 class="text-sm font-medium text-green-300 mb-2">
-          Choose your Civilisation Card
-        </h3>
-        <p class="text-xs text-slate-400 mb-3">
-          Keep your current card or switch to the new Era {{ currentEra }} card. You may only have one.
-        </p>
-        <div class="flex items-start gap-6">
-          <div
-            v-if="myActiveCivCard"
-            class="flex flex-col items-center gap-2"
-          >
-            <span class="text-[10px] text-slate-500 uppercase tracking-wide">Current</span>
-            <div
-              class="w-[90px] h-[126px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
-              :class="[BACK_COLOR_CLASSES[myActiveCivCard.backColor], BACK_COLOR_BORDER[myActiveCivCard.backColor]]"
-            >
-              <div>
-                <div class="text-white/90 leading-tight text-[10px] font-semibold">
-                  {{ myActiveCivCard.name }}
-                </div>
-                <div
-                  v-if="myActiveCivCard.description"
-                  class="text-white/60 text-[8px] leading-tight mt-1"
-                >
-                  {{ myActiveCivCard.description }}
-                </div>
-              </div>
-              <div class="text-white/40 text-[9px]">
-                #{{ myActiveCivCard.number }}
-              </div>
-            </div>
-            <button
-              class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition-colors"
-              @click="onChooseCivCard(true)"
-            >
-              Keep Current
-            </button>
-          </div>
+			<template v-else>
+				<h3 class="text-sm font-medium text-green-300 mb-2">
+					Choose your Civilisation Card
+				</h3>
+				<p class="text-xs text-slate-400 mb-3">
+					Keep your current card or switch to the new Era {{ currentEra }} card. You may only have one.
+				</p>
+				<div class="flex items-start gap-6">
+					<div
+						v-if="myActiveCivCard"
+						class="flex flex-col items-center gap-2"
+					>
+						<span class="text-[10px] text-slate-500 uppercase tracking-wide">Current</span>
+						<div
+							class="w-[90px] h-[126px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
+							:class="[BACK_COLOR_CLASSES[myActiveCivCard.backColor], BACK_COLOR_BORDER[myActiveCivCard.backColor]]"
+						>
+							<div>
+								<div class="text-white/90 leading-tight text-[10px] font-semibold">
+									{{ myActiveCivCard.name }}
+								</div>
+								<div
+									v-if="myActiveCivCard.description"
+									class="text-white/60 text-[8px] leading-tight mt-1"
+								>
+									{{ myActiveCivCard.description }}
+								</div>
+							</div>
+							<div class="text-white/40 text-[9px]">
+								#{{ myActiveCivCard.number }}
+							</div>
+						</div>
+						<button
+							class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition-colors"
+							@click="onChooseCivCard(true)"
+						>
+							Keep Current
+						</button>
+					</div>
 
-          <div
-            v-if="myEraCard"
-            class="flex flex-col items-center gap-2"
-          >
-            <span class="text-[10px] text-slate-500 uppercase tracking-wide">New (Era {{ currentEra }})</span>
-            <div
-              class="w-[90px] h-[126px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
-              :class="[BACK_COLOR_CLASSES[myEraCard.backColor], BACK_COLOR_BORDER[myEraCard.backColor]]"
-            >
-              <div>
-                <div class="text-white/90 leading-tight text-[10px] font-semibold">
-                  {{ myEraCard.name }}
-                </div>
-                <div
-                  v-if="myEraCard.description"
-                  class="text-white/60 text-[8px] leading-tight mt-1"
-                >
-                  {{ myEraCard.description }}
-                </div>
-              </div>
-              <div class="text-white/40 text-[9px]">
-                #{{ myEraCard.number }}
-              </div>
-            </div>
-            <button
-              class="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
-              @click="onChooseCivCard(false)"
-            >
-              Switch to New
-            </button>
-          </div>
-        </div>
-      </template>
-    </div>
+					<div
+						v-if="myEraCard"
+						class="flex flex-col items-center gap-2"
+					>
+						<span class="text-[10px] text-slate-500 uppercase tracking-wide">New (Era {{ currentEra }})</span>
+						<div
+							class="w-[90px] h-[126px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-2"
+							:class="[BACK_COLOR_CLASSES[myEraCard.backColor], BACK_COLOR_BORDER[myEraCard.backColor]]"
+						>
+							<div>
+								<div class="text-white/90 leading-tight text-[10px] font-semibold">
+									{{ myEraCard.name }}
+								</div>
+								<div
+									v-if="myEraCard.description"
+									class="text-white/60 text-[8px] leading-tight mt-1"
+								>
+									{{ myEraCard.description }}
+								</div>
+							</div>
+							<div class="text-white/40 text-[9px]">
+								#{{ myEraCard.number }}
+							</div>
+						</div>
+						<button
+							class="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
+							@click="onChooseCivCard(false)"
+						>
+							Switch to New
+						</button>
+					</div>
+				</div>
+			</template>
+		</div>
 
-    <!-- Board area: left panel (Agora + Judgement) | Board with score track | right panel (Wonders + Buildings) -->
-    <div class="flex flex-col md:flex-row gap-3 md:gap-4 items-center md:items-start justify-center w-full">
-      <!-- Left panel: Agora + Judgement cards -->
-      <div
-        class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto"
-      >
-        <!-- Agora -->
-        <div
-          class="w-[80px] h-[80px] rounded-lg border-2 border-amber-600/50 bg-amber-900/20 flex flex-col items-center justify-center gap-1"
-        >
-          <h3 class="text-[10px] font-medium text-amber-300 tracking-wide uppercase">
-            Agora
-          </h3>
-          <div class="flex flex-wrap items-center justify-center gap-0">
-            <template v-if="agoraWorkers.length === 0">
-              <span class="text-[9px] text-slate-500 italic">Empty</span>
-            </template>
-            <IconMeeple
-              v-for="piece in agoraWorkers"
-              :key="piece.id"
-              :size="20"
-              class="-mx-0.5"
-              :class="PIECE_COLOR_CLASSES[pieceColor(piece)]"
-              stroke-width="2.5"
-              :title="`${pieceColor(piece)} worker`"
-            />
-          </div>
-        </div>
+		<!-- Board area: left panel (Agora + Judgement) | Board with score track | right panel (Wonders + Buildings) -->
+		<div class="flex flex-col md:flex-row gap-3 md:gap-4 items-center md:items-start justify-center w-full">
+			<!-- Left panel: Agora + Judgement cards -->
+			<div
+				class="flex flex-row md:flex-col gap-2 shrink-0 md:self-start order-2 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto"
+			>
+				<!-- Agora -->
+				<div
+					class="w-[80px] h-[80px] rounded-lg border-2 border-amber-600/50 bg-amber-900/20 flex flex-col items-center justify-center gap-1"
+				>
+					<h3 class="text-[10px] font-medium text-amber-300 tracking-wide uppercase">
+						Agora
+					</h3>
+					<div class="flex flex-wrap items-center justify-center gap-0">
+						<template v-if="agoraWorkers.length === 0">
+							<span class="text-[9px] text-slate-500 italic">Empty</span>
+						</template>
+						<IconMeeple
+							v-for="piece in agoraWorkers"
+							:key="piece.id"
+							:size="20"
+							class="-mx-0.5"
+							:class="PIECE_COLOR_CLASSES[pieceColor(piece)]"
+							stroke-width="2.5"
+							:title="`${pieceColor(piece)} worker`"
+						/>
+					</div>
+				</div>
 
-        <!-- History's Judgement cards -->
-        <div
-          v-for="card in historyCards"
-          :key="card.id"
-          class="w-[80px] h-[112px] rounded-lg border-2 bg-gray-700 border-gray-500 text-xs font-medium flex flex-col justify-between p-2"
-          :title="card.description"
-        >
-          <div>
-            <div class="text-amber-300 font-bold leading-tight text-[9px]">
-              {{ card.name }}
-            </div>
-            <div class="text-gray-400 leading-tight text-[7px] mt-0.5">
-              {{ card.description }}
-            </div>
-          </div>
-          <div class="text-gray-500 text-[7px]">
-            Judgement
-          </div>
-        </div>
-      </div>
+				<!-- History's Judgement cards -->
+				<div
+					v-for="card in historyCards"
+					:key="card.id"
+					class="w-[80px] h-[112px] rounded-lg border-2 bg-gray-700 border-gray-500 text-xs font-medium flex flex-col justify-between p-2"
+					:title="card.description"
+				>
+					<div>
+						<div class="text-amber-300 font-bold leading-tight text-[9px]">
+							{{ card.name }}
+						</div>
+						<div class="text-gray-400 leading-tight text-[7px] mt-0.5">
+							{{ card.description }}
+						</div>
+					</div>
+					<div class="text-gray-500 text-[7px]">
+						Judgement
+					</div>
+				</div>
+			</div>
 
-      <!-- Board with score track -->
-      <div class="order-1 md:order-none w-full md:w-auto overflow-x-auto md:overflow-x-visible">
-        <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col min-w-fit">
-          <!-- Top edge of score track (0 at left → 30 at right) -->
-          <div class="flex">
-            <div
-              v-for="pos in topEdgeCells"
-              :key="`t${pos}`"
-              class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-r-0"
-            >
-              <span
-                v-if="showTrackNumber(pos)"
-                class="text-[10px] text-slate-500 leading-none font-medium"
-              >{{ pos }}</span>
-              <div
-                v-if="playersAtTrackPosition.has(pos)"
-                class="absolute bottom-0.5 grid grid-cols-2 gap-px"
-              >
-                <div
-                  v-for="color in playersAtTrackPosition.get(pos)"
-                  :key="color"
-                  class="w-3 h-3 rounded-full"
-                  :class="PLAYER_COLOR_CLASSES[color]"
-                />
-              </div>
-            </div>
-          </div>
+			<!-- Board with score track -->
+			<div class="order-1 md:order-none w-full md:w-auto overflow-x-auto md:overflow-x-visible">
+				<div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col min-w-fit">
+					<!-- Top edge of score track (0 at left → 30 at right) -->
+					<div class="flex">
+						<div
+							v-for="pos in topEdgeCells"
+							:key="`t${pos}`"
+							class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-r-0"
+						>
+							<span
+								v-if="showTrackNumber(pos)"
+								class="text-[10px] text-slate-500 leading-none font-medium"
+							>{{ pos }}</span>
+							<div
+								v-if="playersAtTrackPosition.has(pos)"
+								class="absolute bottom-0.5 grid grid-cols-2 gap-px"
+							>
+								<div
+									v-for="color in playersAtTrackPosition.get(pos)"
+									:key="color"
+									class="w-3 h-3 rounded-full"
+									:class="PLAYER_COLOR_CLASSES[color]"
+								/>
+							</div>
+						</div>
+					</div>
 
-          <!-- Middle: left track + board + right track -->
-          <div class="flex">
-            <!-- Left edge (99 at top → 81 at bottom) -->
-            <div class="flex flex-col w-9 shrink-0">
-              <div
-                v-for="pos in leftEdgeCells"
-                :key="`l${pos}`"
-                class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-b-0"
-              >
-                <span
-                  v-if="showTrackNumber(pos)"
-                  class="text-[10px] text-slate-500 leading-none font-medium"
-                >{{ pos }}</span>
-                <div
-                  v-if="playersAtTrackPosition.has(pos)"
-                  class="absolute bottom-0.5 grid grid-cols-2 gap-px"
-                >
-                  <div
-                    v-for="color in playersAtTrackPosition.get(pos)"
-                    :key="color"
-                    class="w-3 h-3 rounded-full"
-                    :class="PLAYER_COLOR_CLASSES[color]"
-                  />
-                </div>
-              </div>
-            </div>
+					<!-- Middle: left track + board + right track -->
+					<div class="flex">
+						<!-- Left edge (99 at top → 81 at bottom) -->
+						<div class="flex flex-col w-9 shrink-0">
+							<div
+								v-for="pos in leftEdgeCells"
+								:key="`l${pos}`"
+								class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-r border-slate-700/30 last:border-b-0"
+							>
+								<span
+									v-if="showTrackNumber(pos)"
+									class="text-[10px] text-slate-500 leading-none font-medium"
+								>{{ pos }}</span>
+								<div
+									v-if="playersAtTrackPosition.has(pos)"
+									class="absolute bottom-0.5 grid grid-cols-2 gap-px"
+								>
+									<div
+										v-for="color in playersAtTrackPosition.get(pos)"
+										:key="color"
+										class="w-3 h-3 rounded-full"
+										:class="PLAYER_COLOR_CLASSES[color]"
+									/>
+								</div>
+							</div>
+						</div>
 
-            <!-- Board -->
-            <div class="p-1 relative">
-              <div
-                class="absolute inset-0 opacity-10"
-                style="background: url('/images/water-bg.jpg') center / cover no-repeat"
-              />
-              <SquareGrid
-                :board="G.board"
-                :cell-size="96"
-                @cell-click="onCellClick"
-              >
-                <template #cell="{ row, col }">
-                  <div
-                    class="w-full h-full flex flex-col items-center justify-center rounded-sm transition-colors relative"
-                    :class="cellClasses(row, col)"
-                    :style="{ cursor: cellHasPointer(row, col) ? 'pointer' : 'default' }"
-                    @mouseenter="onCellHover(row, col)"
-                    @mouseleave="onCellLeave"
-                  >
-                    <!-- Water edge indicators -->
-                    <div
-                      v-if="cellWaterEdges(row, col)[0]"
-                      class="absolute top-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10"
-                    />
-                    <div
-                      v-if="cellWaterEdges(row, col)[1]"
-                      class="absolute top-0 right-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
-                    />
-                    <div
-                      v-if="cellWaterEdges(row, col)[2]"
-                      class="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10"
-                    />
-                    <div
-                      v-if="cellWaterEdges(row, col)[3]"
-                      class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
-                    />
-                    <!-- <span
+						<!-- Board -->
+						<div class="p-1 relative">
+							<div
+								class="absolute inset-0 opacity-10"
+								style="background: url('/images/water-bg.jpg') center / cover no-repeat"
+							/>
+							<SquareGrid
+								:board="G.board"
+								:cell-size="96"
+								@cell-click="onCellClick"
+							>
+								<template #cell="{ row, col }">
+									<div
+										class="w-full h-full flex flex-col items-center justify-center rounded-sm transition-colors relative"
+										:class="cellClasses(row, col)"
+										:style="{ cursor: cellHasPointer(row, col) ? 'pointer' : 'default' }"
+										@mouseenter="onCellHover(row, col)"
+										@mouseleave="onCellLeave"
+									>
+										<!-- Water edge indicators -->
+										<div
+											v-if="cellWaterEdges(row, col)[0]"
+											class="absolute top-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<div
+											v-if="cellWaterEdges(row, col)[1]"
+											class="absolute top-0 right-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<div
+											v-if="cellWaterEdges(row, col)[2]"
+											class="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<div
+											v-if="cellWaterEdges(row, col)[3]"
+											class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
+										/>
+										<!-- <span
 										v-if="isStartingTileLabel(row, col)"
 										class="text-amber-300/60 text-xs font-medium pointer-events-none select-none"
 										>Start</span
 									> -->
 
-                    <template v-if="resourcesAt(row, col).length === 1 && !previewCells.has(`${row},${col}`)">
-                      <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-                        <component
-                          :is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
-                          :size="28"
-                          :class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
-                        />
-                      </div>
-                    </template>
-                    <template v-else-if="resourcesAt(row, col).length === 2 && !previewCells.has(`${row},${col}`)">
-                      <component
-                        :is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
-                        :size="22"
-                        :class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
-                        class="absolute pointer-events-none select-none"
-                        style="top: 18%; left: 18%"
-                      />
-                      <component
-                        :is="RESOURCE_ICONS[resourcesAt(row, col)[1]].icon"
-                        :size="22"
-                        :class="RESOURCE_ICONS[resourcesAt(row, col)[1]].color"
-                        class="absolute pointer-events-none select-none"
-                        style="bottom: 18%; right: 18%"
-                      />
-                    </template>
+										<template v-if="resourcesAt(row, col).length === 1 && !previewCells.has(`${row},${col}`)">
+											<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+												<component
+													:is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
+													:size="28"
+													:class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
+												/>
+											</div>
+										</template>
+										<template v-else-if="resourcesAt(row, col).length === 2 && !previewCells.has(`${row},${col}`)">
+											<component
+												:is="RESOURCE_ICONS[resourcesAt(row, col)[0]].icon"
+												:size="22"
+												:class="RESOURCE_ICONS[resourcesAt(row, col)[0]].color"
+												class="absolute pointer-events-none select-none"
+												style="top: 18%; left: 18%"
+											/>
+											<component
+												:is="RESOURCE_ICONS[resourcesAt(row, col)[1]].icon"
+												:size="22"
+												:class="RESOURCE_ICONS[resourcesAt(row, col)[1]].color"
+												class="absolute pointer-events-none select-none"
+												style="bottom: 18%; right: 18%"
+											/>
+										</template>
 
-                    <template v-if="previewCells.has(`${row},${col}`) && boardPreviewResources.has(`${row},${col}`)">
-                      <template v-if="boardPreviewResources.get(`${row},${col}`)!.length === 1">
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-                          <component
-                            :is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
-                            :size="28"
-                            :class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
-                            class="opacity-80"
-                          />
-                        </div>
-                      </template>
-                      <template v-else>
-                        <component
-                          :is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
-                          :size="22"
-                          :class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
-                          class="absolute pointer-events-none select-none opacity-80"
-                          style="top: 18%; left: 18%"
-                        />
-                        <component
-                          :is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].icon"
-                          :size="22"
-                          :class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].color"
-                          class="absolute pointer-events-none select-none opacity-80"
-                          style="bottom: 18%; right: 18%"
-                        />
-                      </template>
-                    </template>
+										<template v-if="previewCells.has(`${row},${col}`) && boardPreviewResources.has(`${row},${col}`)">
+											<template v-if="boardPreviewResources.get(`${row},${col}`)!.length === 1">
+												<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+													<component
+														:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
+														:size="28"
+														:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
+														class="opacity-80"
+													/>
+												</div>
+											</template>
+											<template v-else>
+												<component
+													:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].icon"
+													:size="22"
+													:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![0]].color"
+													class="absolute pointer-events-none select-none opacity-80"
+													style="top: 18%; left: 18%"
+												/>
+												<component
+													:is="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].icon"
+													:size="22"
+													:class="RESOURCE_ICONS[boardPreviewResources.get(`${row},${col}`)![1]].color"
+													class="absolute pointer-events-none select-none opacity-80"
+													style="bottom: 18%; right: 18%"
+												/>
+											</template>
+										</template>
 
-                    <template v-if="piecesAt(row, col).length > 0 || citiesAt(row, col).length > 0">
-                      <!-- Capital: top-left -->
-                      <template
-                        v-for="piece in piecesAt(row, col).filter((p) => p.type === 'capital')"
-                        :key="piece.id"
-                      >
-                        <IconHexagon
-                          :size="20"
-                          class="absolute pointer-events-none select-none"
-                          :class="[PIECE_FILL_CLASSES[pieceColor(piece)], PIECE_STROKE_CLASSES[pieceColor(piece)]]"
-                          style="top: 4px; left: 4px"
-                          stroke-width="2.5"
-                          :title="`Capital (${pieceColor(piece)})`"
-                        />
-                      </template>
+										<template v-if="piecesAt(row, col).length > 0 || citiesAt(row, col).length > 0">
+											<!-- Capital: top-left -->
+											<template
+												v-for="piece in piecesAt(row, col).filter((p) => p.type === 'capital')"
+												:key="piece.id"
+											>
+												<IconHexagon
+													:size="20"
+													class="absolute pointer-events-none select-none"
+													:class="[PIECE_FILL_CLASSES[pieceColor(piece)], PIECE_STROKE_CLASSES[pieceColor(piece)]]"
+													style="top: 4px; left: 4px"
+													stroke-width="2.5"
+													:title="`Capital (${pieceColor(piece)})`"
+												/>
+											</template>
 
-                      <!-- City cubes: top-right, stacked downward -->
-                      <div
-                        v-if="citiesAt(row, col).length > 0"
-                        class="absolute flex flex-col gap-0.5 pointer-events-none select-none"
-                        style="top: 4px; right: 4px"
-                      >
-                        <template
-                          v-for="city in citiesAt(row, col)"
-                          :key="`city-${city.owner}`"
-                        >
-                          <div
-                            v-for="n in city.cubes"
-                            :key="n"
-                            class="w-3 h-3 rounded-[2px] flex items-center justify-center text-[6px] text-white font-bold"
-                            :class="CUBE_BG_CLASSES[PLAYER_COLORS[parseInt(city.owner, 10)]]"
-                            :title="`City cube ${n}/${city.cubes} (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
-                          >
-                            {{ n }}
-                          </div>
-                        </template>
-                      </div>
+											<!-- City cubes: top-right, stacked downward -->
+											<div
+												v-if="citiesAt(row, col).length > 0"
+												class="absolute flex flex-col gap-0.5 pointer-events-none select-none"
+												style="top: 4px; right: 4px"
+											>
+												<template
+													v-for="city in citiesAt(row, col)"
+													:key="`city-${city.owner}`"
+												>
+													<div
+														v-for="n in city.cubes"
+														:key="n"
+														class="w-3 h-3 rounded-[2px] flex items-center justify-center text-[6px] text-white font-bold"
+														:class="CUBE_BG_CLASSES[PLAYER_COLORS[parseInt(city.owner, 10)]]"
+														:title="`City cube ${n}/${city.cubes} (${PLAYER_COLORS[parseInt(city.owner, 10)]})`"
+													>
+														{{ n }}
+													</div>
+												</template>
+											</div>
 
-                      <!-- Workers: bottom row, centered -->
-                      <div
-                        v-if="piecesAt(row, col).some((p) => p.type === 'worker')"
-                        class="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-0 select-none"
-                        :class="isSelectingWorker ? 'pointer-events-auto' : 'pointer-events-none'"
-                        style="bottom: 0px"
-                      >
-                        <IconMeeple
-                          v-for="piece in piecesAt(row, col).filter((p) => p.type === 'worker')"
-                          :key="piece.id"
-                          :size="22"
-                          class="-mx-0.5 transition-all"
-                          :class="[
-                            PIECE_COLOR_CLASSES[pieceColor(piece)],
-                            isWorkerSelectable(piece)
-                              ? 'cursor-pointer hover:scale-125 hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.5)]'
-                              : piece.exhausted
-                                ? 'opacity-40'
-                                : '',
-                          ]"
-                          stroke-width="2.5"
-                          :title="`Worker (${pieceColor(piece)})${piece.exhausted ? ' - exhausted' : ''}`"
-                        />
-                      </div>
-                    </template>
-                  </div>
-                </template>
-              </SquareGrid>
-            </div>
+											<!-- Workers: bottom row, centered -->
+											<div
+												v-if="piecesAt(row, col).some((p) => p.type === 'worker')"
+												class="absolute bottom-0 left-0 right-0 flex items-end justify-center gap-0 select-none"
+												:class="isSelectingWorker ? 'pointer-events-auto' : 'pointer-events-none'"
+												style="bottom: 0px"
+											>
+												<IconMeeple
+													v-for="piece in piecesAt(row, col).filter((p) => p.type === 'worker')"
+													:key="piece.id"
+													:size="22"
+													class="-mx-0.5 transition-all"
+													:class="[
+														PIECE_COLOR_CLASSES[pieceColor(piece)],
+														isWorkerSelectable(piece)
+															? 'cursor-pointer hover:scale-125 hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.5)]'
+															: piece.exhausted
+																? 'opacity-40'
+																: '',
+													]"
+													stroke-width="2.5"
+													:title="`Worker (${pieceColor(piece)})${piece.exhausted ? ' - exhausted' : ''}`"
+												/>
+											</div>
+										</template>
+									</div>
+								</template>
+							</SquareGrid>
+						</div>
 
-            <!-- Right edge (31 at top → 50 at bottom) -->
-            <div class="flex flex-col w-9 shrink-0">
-              <div
-                v-for="pos in rightEdgeCells"
-                :key="`r${pos}`"
-                class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-l border-slate-700/30 last:border-b-0"
-              >
-                <span
-                  v-if="showTrackNumber(pos)"
-                  class="text-[10px] text-slate-500 leading-none font-medium"
-                >{{ pos }}</span>
-                <div
-                  v-if="playersAtTrackPosition.has(pos)"
-                  class="absolute bottom-0.5 grid grid-cols-2 gap-px"
-                >
-                  <div
-                    v-for="color in playersAtTrackPosition.get(pos)"
-                    :key="color"
-                    class="w-3 h-3 rounded-full"
-                    :class="PLAYER_COLOR_CLASSES[color]"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+						<!-- Right edge (31 at top → 50 at bottom) -->
+						<div class="flex flex-col w-9 shrink-0">
+							<div
+								v-for="pos in rightEdgeCells"
+								:key="`r${pos}`"
+								class="flex-1 flex items-center justify-center relative bg-slate-900/50 border-b border-l border-slate-700/30 last:border-b-0"
+							>
+								<span
+									v-if="showTrackNumber(pos)"
+									class="text-[10px] text-slate-500 leading-none font-medium"
+								>{{ pos }}</span>
+								<div
+									v-if="playersAtTrackPosition.has(pos)"
+									class="absolute bottom-0.5 grid grid-cols-2 gap-px"
+								>
+									<div
+										v-for="color in playersAtTrackPosition.get(pos)"
+										:key="color"
+										class="w-3 h-3 rounded-full"
+										:class="PLAYER_COLOR_CLASSES[color]"
+									/>
+								</div>
+							</div>
+						</div>
+					</div>
 
-          <!-- Bottom edge of score track (80 at left → 51 at right) -->
-          <div class="flex">
-            <div
-              v-for="pos in bottomEdgeCells"
-              :key="`b${pos}`"
-              class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-t border-r border-slate-700/30 last:border-r-0"
-            >
-              <span
-                v-if="showTrackNumber(pos)"
-                class="text-[10px] text-slate-500 leading-none font-medium"
-              >{{ pos }}</span>
-              <div
-                v-if="playersAtTrackPosition.has(pos)"
-                class="absolute bottom-0.5 grid grid-cols-2 gap-px"
-              >
-                <div
-                  v-for="color in playersAtTrackPosition.get(pos)"
-                  :key="color"
-                  class="w-3 h-3 rounded-full"
-                  :class="PLAYER_COLOR_CLASSES[color]"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+					<!-- Bottom edge of score track (80 at left → 51 at right) -->
+					<div class="flex">
+						<div
+							v-for="pos in bottomEdgeCells"
+							:key="`b${pos}`"
+							class="flex-1 h-9 flex items-center justify-center relative bg-slate-900/50 border-t border-r border-slate-700/30 last:border-r-0"
+						>
+							<span
+								v-if="showTrackNumber(pos)"
+								class="text-[10px] text-slate-500 leading-none font-medium"
+							>{{ pos }}</span>
+							<div
+								v-if="playersAtTrackPosition.has(pos)"
+								class="absolute bottom-0.5 grid grid-cols-2 gap-px"
+							>
+								<div
+									v-for="color in playersAtTrackPosition.get(pos)"
+									:key="color"
+									class="w-3 h-3 rounded-full"
+									:class="PLAYER_COLOR_CLASSES[color]"
+								/>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
 
-      <!-- Right panel: Wonders + Buildings -->
-      <div
-        v-if="availableWonders.length > 0 || availableBuildings.length > 0"
-        class="flex flex-col md:flex-row gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto"
-      >
-        <!-- Wonders -->
-        <div
-          v-if="availableWonders.length > 0"
-          class="flex flex-row md:flex-col gap-2"
-        >
-          <div
-            v-for="card in availableWonders"
-            :key="card.id"
-            class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
-            :class="
-              (selectingWonder || canDoAction('buildWonder')) && canAffordWonder(card)
-                ? 'bg-purple-900/60 border-purple-400 ring-2 ring-purple-400/50 cursor-pointer hover:ring-purple-300'
-                : hasWonderDiscount(card) || isGreeceFreeAvailable
-                  ? 'bg-purple-900/60 border-amber-500/70 ring-1 ring-amber-400/30'
-                  : 'bg-purple-900/60 border-purple-500'"
-            :title="card.description"
-            @click="onClickWonderCard(card.id)"
-          >
-            <div>
-              <div class="text-purple-200 leading-tight text-[10px] font-semibold">
-                {{ card.name }}
-              </div>
-              <div
-                v-if="card.description"
-                class="text-purple-300/60 text-[8px] leading-tight mt-0.5"
-              >
-                {{ card.description }}
-              </div>
-            </div>
-            <div>
-              <div class="flex items-center justify-between">
-                <span
-                  class="text-[10px] font-bold"
-                  :class="hasWonderDiscount(card) ? 'text-green-400' : 'text-amber-400'"
-                >{{ getWonderCost(card) }}g</span>
-                <span
-                  v-if="hasWonderDiscount(card)"
-                  class="text-purple-500/60 text-[8px] line-through"
-                >{{ card.wonderCost }}g</span>
-              </div>
-              <div
-                v-if="isGreeceFreeAvailable"
-                class="text-green-400/80 text-[7px] leading-tight mt-0.5"
-              >
-                ✦ Greece: Free
-              </div>
-              <div
-                v-else-if="hasWonderDiscount(card)"
-                class="text-amber-400/70 text-[7px] leading-tight mt-0.5"
-              >
-                ✦ {{ CIV_DISPLAY_NAMES[card.wonderDiscountCiv!] ?? card.wonderDiscountCiv }}
-              </div>
-            </div>
-          </div>
-        </div>
+			<!-- Right panel: Wonders + Buildings -->
+			<div
+				v-if="availableWonders.length > 0 || availableBuildings.length > 0"
+				class="flex flex-col md:flex-row gap-2 shrink-0 md:self-start order-3 md:order-none overflow-x-auto md:overflow-visible w-full md:w-auto"
+			>
+				<!-- Wonders -->
+				<div
+					v-if="availableWonders.length > 0"
+					class="flex flex-row md:flex-col gap-2"
+				>
+					<div
+						v-for="card in availableWonders"
+						:key="card.id"
+						class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
+						:class="
+							(selectingWonder || canDoAction('buildWonder')) && canAffordWonder(card)
+								? 'bg-purple-900/60 border-purple-400 ring-2 ring-purple-400/50 cursor-pointer hover:ring-purple-300'
+								: hasWonderDiscount(card) || isGreeceFreeAvailable
+									? 'bg-purple-900/60 border-amber-500/70 ring-1 ring-amber-400/30'
+									: 'bg-purple-900/60 border-purple-500'"
+						:title="card.description"
+						@click="onClickWonderCard(card.id)"
+					>
+						<div>
+							<div class="text-purple-200 leading-tight text-[10px] font-semibold">
+								{{ card.name }}
+							</div>
+							<div
+								v-if="card.description"
+								class="text-purple-300/60 text-[8px] leading-tight mt-0.5"
+							>
+								{{ card.description }}
+							</div>
+						</div>
+						<div>
+							<div class="flex items-center justify-between">
+								<span
+									class="text-[10px] font-bold"
+									:class="hasWonderDiscount(card) ? 'text-green-400' : 'text-amber-400'"
+								>{{ getWonderCost(card) }}g</span>
+								<span
+									v-if="hasWonderDiscount(card)"
+									class="text-purple-500/60 text-[8px] line-through"
+								>{{ card.wonderCost }}g</span>
+							</div>
+							<div
+								v-if="isGreeceFreeAvailable"
+								class="text-green-400/80 text-[7px] leading-tight mt-0.5"
+							>
+								✦ Greece: Free
+							</div>
+							<div
+								v-else-if="hasWonderDiscount(card)"
+								class="text-amber-400/70 text-[7px] leading-tight mt-0.5"
+							>
+								✦ {{ CIV_DISPLAY_NAMES[card.wonderDiscountCiv!] ?? card.wonderDiscountCiv }}
+							</div>
+						</div>
+					</div>
+				</div>
 
-        <!-- Buildings -->
-        <div
-          v-if="availableBuildings.length > 0"
-          class="flex flex-row md:flex-col gap-2"
-        >
-          <div
-            v-for="card in availableBuildings"
-            :key="card.id"
-            class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
-            :class="
-              (agoraAction === 'builder' && agoraWorkerId) || canDoAction('builder')
-                ? 'bg-orange-900/60 border-orange-400 ring-2 ring-orange-400/50 cursor-pointer hover:ring-orange-300'
-                : 'bg-orange-900/60 border-orange-500'
-            "
-            :title="card.description ?? ''"
-            @click="onSelectBuildingCard(card.id)"
-          >
-            <div>
-              <div class="text-orange-200 leading-tight text-[10px] font-semibold">
-                {{ card.name }}
-              </div>
-              <div
-                v-if="card.description"
-                class="text-orange-300/50 text-[8px] leading-tight mt-0.5"
-              >
-                {{ card.description }}
-              </div>
-            </div>
-            <div class="text-orange-400/60 text-[9px]">
-              Building
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+				<!-- Buildings -->
+				<div
+					v-if="availableBuildings.length > 0"
+					class="flex flex-row md:flex-col gap-2"
+				>
+					<div
+						v-for="card in availableBuildings"
+						:key="card.id"
+						class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
+						:class="
+							(agoraAction === 'builder' && agoraWorkerId) || canDoAction('builder')
+								? 'bg-orange-900/60 border-orange-400 ring-2 ring-orange-400/50 cursor-pointer hover:ring-orange-300'
+								: 'bg-orange-900/60 border-orange-500'
+						"
+						:title="card.description ?? ''"
+						@click="onSelectBuildingCard(card.id)"
+					>
+						<div>
+							<div class="text-orange-200 leading-tight text-[10px] font-semibold">
+								{{ card.name }}
+							</div>
+							<div
+								v-if="card.description"
+								class="text-orange-300/50 text-[8px] leading-tight mt-0.5"
+							>
+								{{ card.description }}
+							</div>
+						</div>
+						<div class="text-orange-400/60 text-[9px]">
+							Building
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
 
-    <!-- Player Board -->
-    <div
-      v-if="viewedPlayer"
-      class="w-full bg-slate-800 border-2 rounded-xl overflow-hidden"
-      :class="isViewingSelf ? PLAYER_COLOR_BORDER[viewedPlayer.color] : 'border-slate-700'"
-    >
-      <!-- Header: arrows + player info + resources -->
-      <div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
-        <button
-          class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
-          @click="cyclePlayer(-1)"
-        >
-          &lsaquo;
-        </button>
+		<!-- Player Board -->
+		<div
+			v-if="viewedPlayer"
+			class="w-full bg-slate-800 border-2 rounded-xl overflow-hidden"
+			:class="isViewingSelf ? PLAYER_COLOR_BORDER[viewedPlayer.color] : 'border-slate-700'"
+		>
+			<!-- Header: arrows + player info + resources -->
+			<div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
+				<button
+					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
+					@click="cyclePlayer(-1)"
+				>
+					&lsaquo;
+				</button>
 
-        <div class="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
-          <div
-            class="w-3 h-3 rounded-full shrink-0"
-            :class="PLAYER_COLOR_CLASSES[viewedPlayer.color]"
-          />
-          <span
-            class="font-medium capitalize"
-            :class="PLAYER_COLOR_TEXT[viewedPlayer.color]"
-          >{{ viewedPlayer.color }}</span>
-          <span
-            v-if="viewedPlayer.passedThisEra"
-            class="text-[10px] px-1.5 py-0.5 rounded bg-amber-800/60 text-amber-300 font-medium"
-          >Golden Age</span>
-          <span
-            v-if="isViewingSelf"
-            class="text-slate-500 text-xs"
-          >(You)</span>
-          <span
-            v-if="isViewedPlayersTurn"
-            class="text-[10px] px-1.5 py-0.5 rounded font-medium animate-pulse"
-            :class="isViewingSelf ? 'bg-emerald-800/60 text-emerald-300' : 'bg-blue-800/60 text-blue-300'"
-          >{{ isViewingSelf ? "Your Turn" : "Active Turn" }}</span>
-          <span
-            v-if="isTechSelectionActive"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
-          >
-            <template v-if="japanTechQueue.length > 0">
-              {{ japanTechQueue.length }} tech{{ japanTechQueue.length > 1 ? "s" : "" }} queued ({{ japanQueuedGold }}g)
-              <button
-                class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
-                @click="onConfirmJapanTechs"
-              >
-                Confirm
-              </button>
-            </template>
-            <template v-else-if="oxfordTechPending">
-              Oxford University: select {{ 2 - oxfordTechQueue.length }} more tech{{ 2 - oxfordTechQueue.length > 1 ? "s" : "" }} (free)
-              <button
-                v-if="oxfordTechQueue.length > 0"
-                class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
-                @click="onConfirmOxford"
-              >
-                Confirm
-              </button>
-            </template>
-            <template v-else>
-              {{
-                greatLibraryTechPending
-                  ? "Select a technology (free - Great Library)"
-                  : activatingTechSlot !== null
-                    ? activatingTechDiscount >= 99
-                      ? "Select a technology (free)"
-                      : `Select a technology (${activatingTechDiscount}g discount)`
-                    : japanDiscount > 0
-                      ? `Select technologies (-${japanDiscount}g each)`
-                      : "Select a technology"
-              }}
-            </template>
-            <button
-              class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="onCancelTechSelect"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="explorerPhase === 'selectWorker'"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-cyan-800/40 text-cyan-300 font-medium ml-2"
-          >
-            Select a worker
-            <button
-              class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="resetExplorer"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="explorerPhase === 'selectDest'"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-cyan-800/40 text-cyan-300 font-medium ml-2"
-          >
-            Select destination
-            <button
-              class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="resetExplorer"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="soldierPhase === 'selectWorker'"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-red-800/40 text-red-300 font-medium ml-2"
-          >
-            Select a worker for Soldier
-            <button
-              class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="resetSoldier"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="soldierPhase === 'selectDest'"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-red-800/40 text-red-300 font-medium ml-2"
-          >
-            Select target
-            <button
-              class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="resetSoldier"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="agoraAction"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
-          >
-            <template v-if="agoraAction === 'builder' && agoraWorkerId"> Select a building card from the display </template>
-            <template v-else> Select a worker for {{ agoraAction === "artist" ? "Artist" : "Builder" }} </template>
-            <button
-              class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="resetAgora"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="isActivating"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-green-800/40 text-green-300 font-medium ml-2"
-          >
-            <template v-if="activatingTechSlot !== null">
-              Select a technology ({{ activatingTechDiscount >= 99 ? "free" : `${activatingTechDiscount}g discount` }})
-            </template>
-            <template v-else-if="activatingFactory !== null"> Select an exhausted worker on the map to reactivate </template>
-            <template v-else-if="notreDamePending !== null">
-              Notre Dame:
-              <button
-                class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors"
-                @click="onNotreDameChoice(0)"
-              >
-                Map → Agora
-              </button>
-              <button
-                class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors"
-                @click="onNotreDameChoice(1)"
-              >
-                Agora → Capital
-              </button>
-            </template>
-            <template v-else> Select a building or wonder to activate </template>
-            <button
-              class="text-green-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="resetActivate"
-            >
-              &times;
-            </button>
-          </span>
-          <span
-            v-if="selectingWonder && !isWonderTechActive"
-            class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-purple-800/40 text-purple-300 font-medium ml-2"
-          >
-            Select a wonder to build
-            <button
-              class="text-purple-400 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
-              @click="cancelWonderSelect"
-            >
-              &times;
-            </button>
-          </span>
-        </div>
+				<div class="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+					<div
+						class="w-3 h-3 rounded-full shrink-0"
+						:class="PLAYER_COLOR_CLASSES[viewedPlayer.color]"
+					/>
+					<span
+						class="font-medium capitalize"
+						:class="PLAYER_COLOR_TEXT[viewedPlayer.color]"
+					>{{ viewedPlayer.color }}</span>
+					<span
+						v-if="viewedPlayer.passedThisEra"
+						class="text-[10px] px-1.5 py-0.5 rounded bg-amber-800/60 text-amber-300 font-medium"
+					>Golden Age</span>
+					<span
+						v-if="isViewingSelf"
+						class="text-slate-500 text-xs"
+					>(You)</span>
+					<span
+						v-if="isViewedPlayersTurn"
+						class="text-[10px] px-1.5 py-0.5 rounded font-medium animate-pulse"
+						:class="isViewingSelf ? 'bg-emerald-800/60 text-emerald-300' : 'bg-blue-800/60 text-blue-300'"
+					>{{ isViewingSelf ? "Your Turn" : "Active Turn" }}</span>
+					<span
+						v-if="isTechSelectionActive"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
+					>
+						<template v-if="japanTechQueue.length > 0">
+							{{ japanTechQueue.length }} tech{{ japanTechQueue.length > 1 ? "s" : "" }} queued ({{ japanQueuedGold }}g)
+							<button
+								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
+								@click="onConfirmJapanTechs"
+							>
+								Confirm
+							</button>
+						</template>
+						<template v-else-if="oxfordTechPending">
+							Oxford University: select {{ 2 - oxfordTechQueue.length }} more tech{{ 2 - oxfordTechQueue.length > 1 ? "s" : "" }} (free)
+							<button
+								v-if="oxfordTechQueue.length > 0"
+								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
+								@click="onConfirmOxford"
+							>
+								Confirm
+							</button>
+						</template>
+						<template v-else>
+							{{
+								greatLibraryTechPending
+									? "Select a technology (free - Great Library)"
+									: activatingTechSlot !== null
+										? activatingTechDiscount >= 99
+											? "Select a technology (free)"
+											: `Select a technology (${activatingTechDiscount}g discount)`
+										: japanDiscount > 0
+											? `Select technologies (-${japanDiscount}g each)`
+											: "Select a technology"
+							}}
+						</template>
+						<button
+							class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="onCancelTechSelect"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="explorerPhase === 'selectWorker'"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-cyan-800/40 text-cyan-300 font-medium ml-2"
+					>
+						Select a worker
+						<button
+							class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetExplorer"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="explorerPhase === 'selectDest'"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-cyan-800/40 text-cyan-300 font-medium ml-2"
+					>
+						Select destination
+						<button
+							class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetExplorer"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="soldierPhase === 'selectWorker'"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-red-800/40 text-red-300 font-medium ml-2"
+					>
+						Select a worker for Soldier
+						<button
+							class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetSoldier"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="soldierPhase === 'selectDest'"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-red-800/40 text-red-300 font-medium ml-2"
+					>
+						Select target
+						<button
+							class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetSoldier"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="agoraAction"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
+					>
+						<template v-if="agoraAction === 'builder' && agoraWorkerId"> Select a building card from the display </template>
+						<template v-else> Select a worker for {{ agoraAction === "artist" ? "Artist" : "Builder" }} </template>
+						<button
+							class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetAgora"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="isActivating"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-green-800/40 text-green-300 font-medium ml-2"
+					>
+						<template v-if="activatingTechSlot !== null">
+							Select a technology ({{ activatingTechDiscount >= 99 ? "free" : `${activatingTechDiscount}g discount` }})
+						</template>
+						<template v-else-if="activatingFactory !== null"> Select an exhausted worker on the map to reactivate </template>
+						<template v-else-if="notreDamePending !== null">
+							Notre Dame:
+							<button
+								class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors"
+								@click="onNotreDameChoice(0)"
+							>
+								Map → Agora
+							</button>
+							<button
+								class="px-2 py-0.5 rounded bg-purple-700/50 hover:bg-purple-600/50 text-purple-200 cursor-pointer transition-colors"
+								@click="onNotreDameChoice(1)"
+							>
+								Agora → Capital
+							</button>
+						</template>
+						<template v-else> Select a building or wonder to activate </template>
+						<button
+							class="text-green-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="resetActivate"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="selectingWonder && !isWonderTechActive"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-purple-800/40 text-purple-300 font-medium ml-2"
+					>
+						Select a wonder to build
+						<button
+							class="text-purple-400 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="cancelWonderSelect"
+						>
+							&times;
+						</button>
+					</span>
+				</div>
 
-        <div class="flex items-center gap-2 md:gap-3 text-base text-slate-400 shrink-0">
-          <span
-            class="inline-flex items-center gap-0.5"
-            title="Gold"
-          ><IconCoin
-             :size="14"
-             class="text-amber-400 mr-1"
-           />
-            <span class="text-amber-400 font-medium">{{ viewedPlayer.gold ?? 0 }}</span></span>
-          <span
-            class="inline-flex items-center gap-0.5"
-            title="Cubes"
-          ><IconSquareFilled
-            :size="12"
-            class="text-slate-300 mr-1"
-          /> {{ viewedPlayer.cubes ?? 0 }}</span>
-          <span
-            class="inline-flex items-center gap-0.5"
-            :title="`Workers: ${viewedWorkerStatus.available} available / ${viewedWorkerStatus.exhausted} exhausted`"
-          ><IconMeeple
-            :size="14"
-            class="text-slate-400 mr-1"
-          /> {{ viewedWorkerStatus.available }}/{{ viewedWorkerStatus.total }}</span>
-          <span
-            class="inline-flex items-center gap-0.5"
-            :title="`Glory: ${(viewedPlayer?.gloryTokens ?? []).length} tokens (${(viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0)} pts)`"
-          ><IconLaurelWreath
-             :size="14"
-             class="text-slate-400 mr-1"
-           />
-            {{ (viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0) }}</span>
-          <span class="hidden md:inline text-slate-600">|</span>
-          <span
-            v-for="res in (['gem', 'rock', 'game', 'wheat'] as ResourceType[])"
-            :key="res"
-            class="inline-flex items-center gap-0.5"
-            :title="res"
-          >
-            <component
-              :is="RESOURCE_ICONS[res].icon"
-              :size="13"
-              :class="RESOURCE_ICONS[res].color"
-            />
-            <span class="ml-1 text-slate-300 font-medium w-2.5 text-right">{{ viewedResourceCounts[res] }}</span>
-          </span>
-        </div>
+				<div class="flex items-center gap-2 md:gap-3 text-base text-slate-400 shrink-0">
+					<span
+						class="inline-flex items-center gap-0.5"
+						title="Gold"
+					><IconCoin
+						 :size="14"
+						 class="text-amber-400 mr-1"
+					 />
+						<span class="text-amber-400 font-medium">{{ viewedPlayer.gold ?? 0 }}</span></span>
+					<span
+						class="inline-flex items-center gap-0.5"
+						title="Cubes"
+					><IconSquareFilled
+						:size="12"
+						class="text-slate-300 mr-1"
+					/> {{ viewedPlayer.cubes ?? 0 }}</span>
+					<span
+						class="inline-flex items-center gap-0.5"
+						:title="`Workers: ${viewedWorkerStatus.available} available / ${viewedWorkerStatus.exhausted} exhausted`"
+					><IconMeeple
+						:size="14"
+						class="text-slate-400 mr-1"
+					/> {{ viewedWorkerStatus.available }}/{{ viewedWorkerStatus.total }}</span>
+					<span
+						class="inline-flex items-center gap-0.5"
+						:title="`Glory: ${(viewedPlayer?.gloryTokens ?? []).length} tokens (${(viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0)} pts)`"
+					><IconLaurelWreath
+						 :size="14"
+						 class="text-slate-400 mr-1"
+					 />
+						{{ (viewedPlayer?.gloryTokens ?? []).reduce((s: number, v: number) => s + v, 0) }}</span>
+					<span class="hidden md:inline text-slate-600">|</span>
+					<span
+						v-for="res in (['gem', 'rock', 'game', 'wheat'] as ResourceType[])"
+						:key="res"
+						class="inline-flex items-center gap-0.5"
+						:title="res"
+					>
+						<component
+							:is="RESOURCE_ICONS[res].icon"
+							:size="13"
+							:class="RESOURCE_ICONS[res].color"
+						/>
+						<span class="ml-1 text-slate-300 font-medium w-2.5 text-right">{{ viewedResourceCounts[res] }}</span>
+					</span>
+				</div>
 
-        <button
-          class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
-          @click="cyclePlayer(1)"
-        >
-          &rsaquo;
-        </button>
-      </div>
+				<button
+					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
+					@click="cyclePlayer(1)"
+				>
+					&rsaquo;
+				</button>
+			</div>
 
-      <!-- Bottom third: cards + invasion track + actions in one row -->
-      <div class="px-3 md:px-4 pt-1.5 md:pt-2 border-b mb-0 pb-2 border-slate-700/50">
-        <div class="flex gap-2 items-center overflow-x-auto">
-          <!-- Building slots -->
-          <div
-            v-for="(_, slotIdx) in 3"
-            :key="`bslot-${slotIdx}`"
-            class="w-[72px] h-[100px] rounded-lg border-2 flex flex-col items-center justify-center relative transition-all shrink-0"
-            :class="[
-              viewedPlayer?.builtBuildings?.[slotIdx]
-                ? viewedPlayer.activatedBuildings?.[slotIdx] &&
-                  !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
-                  ? 'border-orange-500/30 bg-orange-900/10 opacity-50'
-                  : activatingBuilding &&
-                    isViewingSelf &&
-                    !viewedPlayer.activatedBuildings?.[slotIdx] &&
-                    !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
-                    ? 'border-green-400 bg-green-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
-                    : 'border-orange-500/60 bg-orange-900/20'
-                : viewedBuildingSlots[slotIdx]
-                  ? 'border-dashed border-slate-500/60 bg-slate-700/30'
-                  : 'border-dashed border-slate-700/40 bg-slate-800/30 opacity-40',
-            ]"
-            @click="activatingBuilding && viewedPlayer?.builtBuildings?.[slotIdx] && isViewingSelf ? onActivateSlot(slotIdx) : undefined"
-          >
-            <template v-if="viewedPlayer?.builtBuildings?.[slotIdx]">
-              <span
-                class="text-[10px] font-medium text-center px-1 leading-tight"
-                :class="
-                  viewedPlayer.activatedBuildings?.[slotIdx] &&
-                    !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
-                    ? 'text-orange-500/50'
-                    : 'text-orange-300'
-                "
-              >
-                {{ viewedPlayer.builtBuildings[slotIdx]!.name }}
-              </span>
-              <span
-                v-if="viewedPlayer.builtBuildings[slotIdx]!.description"
-                class="text-[8px] text-center px-1 leading-tight mt-0.5"
-                :class="
-                  viewedPlayer.activatedBuildings?.[slotIdx] &&
-                    !PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
-                    ? 'text-slate-600'
-                    : 'text-slate-400'
-                "
-              >
-                {{ viewedPlayer.builtBuildings[slotIdx]!.description }}
-              </span>
-              <span
-                v-if="PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')"
-                class="text-[8px] text-blue-400/60 mt-1 font-medium"
-              >Permanent</span>
-              <span
-                v-else-if="viewedPlayer.activatedBuildings?.[slotIdx]"
-                class="text-[8px] text-green-400/60 mt-1 font-medium"
-              >Used</span>
-            </template>
-            <template v-else-if="viewedBuildingSlots[slotIdx]">
-              <span class="text-[10px] text-slate-500">Empty</span>
-            </template>
-            <template v-else>
-              <IconLock
-                :size="16"
-                class="text-slate-600"
-              />
-              <span class="text-[9px] text-slate-600 mt-0.5">Locked</span>
-            </template>
-          </div>
+			<!-- Bottom third: cards + invasion track + actions in one row -->
+			<div class="px-3 md:px-4 pt-1.5 md:pt-2 border-b mb-0 pb-2 border-slate-700/50">
+				<div class="flex gap-2 items-center overflow-x-auto">
+					<!-- Building slots -->
+					<div
+						v-for="(_, slotIdx) in 3"
+						:key="`bslot-${slotIdx}`"
+						class="w-[72px] h-[100px] rounded-lg border-2 flex flex-col items-center justify-center relative transition-all shrink-0"
+						:class="[
+							viewedPlayer?.builtBuildings?.[slotIdx]
+								? viewedPlayer.activatedBuildings?.[slotIdx] &&
+									!PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+									? 'border-orange-500/30 bg-orange-900/10 opacity-50'
+									: activatingBuilding &&
+										isViewingSelf &&
+										!viewedPlayer.activatedBuildings?.[slotIdx] &&
+										!PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+										? 'border-green-400 bg-green-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
+										: 'border-orange-500/60 bg-orange-900/20'
+								: viewedBuildingSlots[slotIdx]
+									? 'border-dashed border-slate-500/60 bg-slate-700/30'
+									: 'border-dashed border-slate-700/40 bg-slate-800/30 opacity-40',
+						]"
+						@click="activatingBuilding && viewedPlayer?.builtBuildings?.[slotIdx] && isViewingSelf ? onActivateSlot(slotIdx) : undefined"
+					>
+						<template v-if="viewedPlayer?.builtBuildings?.[slotIdx]">
+							<span
+								class="text-[10px] font-medium text-center px-1 leading-tight"
+								:class="
+									viewedPlayer.activatedBuildings?.[slotIdx] &&
+										!PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+										? 'text-orange-500/50'
+										: 'text-orange-300'
+								"
+							>
+								{{ viewedPlayer.builtBuildings[slotIdx]!.name }}
+							</span>
+							<span
+								v-if="viewedPlayer.builtBuildings[slotIdx]!.description"
+								class="text-[8px] text-center px-1 leading-tight mt-0.5"
+								:class="
+									viewedPlayer.activatedBuildings?.[slotIdx] &&
+										!PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')
+										? 'text-slate-600'
+										: 'text-slate-400'
+								"
+							>
+								{{ viewedPlayer.builtBuildings[slotIdx]!.description }}
+							</span>
+							<span
+								v-if="PASSIVE_BUILDINGS.has(viewedPlayer.builtBuildings[slotIdx]?.buildingType ?? '')"
+								class="text-[8px] text-blue-400/60 mt-1 font-medium"
+							>Permanent</span>
+							<span
+								v-else-if="viewedPlayer.activatedBuildings?.[slotIdx]"
+								class="text-[8px] text-green-400/60 mt-1 font-medium"
+							>Used</span>
+						</template>
+						<template v-else-if="viewedBuildingSlots[slotIdx]">
+							<span class="text-[10px] text-slate-500">Empty</span>
+						</template>
+						<template v-else>
+							<IconLock
+								:size="16"
+								class="text-slate-600"
+							/>
+							<span class="text-[9px] text-slate-600 mt-0.5">Locked</span>
+						</template>
+					</div>
 
-          <!-- Built wonders -->
-          <template v-if="viewedPlayer?.builtWonders?.length">
-            <div
-              v-for="(wonder, wIdx) in viewedPlayer.builtWonders"
-              :key="`wonder-${wIdx}`"
-              class="w-[72px] h-[100px] rounded-lg border-2 flex flex-col items-center justify-center p-1.5 transition-all shrink-0"
-              :class="
-                activatingBuilding && isViewingSelf && wonderActivatable(wonder, wIdx)
-                  ? 'border-green-400 bg-purple-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
-                  : wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)
-                    ? 'border-purple-500/30 bg-purple-900/10 opacity-50'
-                    : 'border-purple-500/60 bg-purple-900/20'
-              "
-              @click="activatingBuilding && isViewingSelf ? onActivateWonder(wIdx) : undefined"
-            >
-              <span class="text-[10px] font-medium text-center px-1 leading-tight text-purple-300">
-                {{ wonder.name }}
-              </span>
-              <span
-                v-if="wonder.description"
-                class="text-[8px] text-center px-1 leading-tight mt-0.5 text-slate-400"
-              >
-                {{ wonder.description }}
-              </span>
-              <span
-                v-if="wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)"
-                class="text-[8px] text-green-400/60 mt-1 font-medium"
-              >Used</span>
-              <span
-                v-else-if="wonderActivatable(wonder, wIdx)"
-                class="text-[8px] text-purple-400/60 mt-1 font-medium"
-              >Activate</span>
-            </div>
-          </template>
+					<!-- Built wonders -->
+					<template v-if="viewedPlayer?.builtWonders?.length">
+						<div
+							v-for="(wonder, wIdx) in viewedPlayer.builtWonders"
+							:key="`wonder-${wIdx}`"
+							class="w-[72px] h-[100px] rounded-lg border-2 flex flex-col items-center justify-center p-1.5 transition-all shrink-0"
+							:class="
+								activatingBuilding && isViewingSelf && wonderActivatable(wonder, wIdx)
+									? 'border-green-400 bg-purple-900/30 ring-2 ring-green-400/50 cursor-pointer hover:ring-green-300'
+									: wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)
+										? 'border-purple-500/30 bg-purple-900/10 opacity-50'
+										: 'border-purple-500/60 bg-purple-900/20'
+							"
+							@click="activatingBuilding && isViewingSelf ? onActivateWonder(wIdx) : undefined"
+						>
+							<span class="text-[10px] font-medium text-center px-1 leading-tight text-purple-300">
+								{{ wonder.name }}
+							</span>
+							<span
+								v-if="wonder.description"
+								class="text-[8px] text-center px-1 leading-tight mt-0.5 text-slate-400"
+							>
+								{{ wonder.description }}
+							</span>
+							<span
+								v-if="wonderHasActivate(wonder) && !wonderActivatable(wonder, wIdx)"
+								class="text-[8px] text-green-400/60 mt-1 font-medium"
+							>Used</span>
+							<span
+								v-else-if="wonderActivatable(wonder, wIdx)"
+								class="text-[8px] text-purple-400/60 mt-1 font-medium"
+							>Activate</span>
+						</div>
+					</template>
 
-          <!-- Active civilisation card -->
-          <div
-            v-if="viewedCivCard"
-            class="shrink-0 pl-2 border-l border-slate-700/40"
-          >
-            <div
-              class="w-[72px] h-[100px] rounded-lg border text-xs font-medium flex flex-col justify-between p-1.5"
-              :class="[BACK_COLOR_CLASSES[viewedCivCard.backColor], BACK_COLOR_BORDER[viewedCivCard.backColor]]"
-              :title="viewedCivCard.description ?? ''"
-            >
-              <div>
-                <div class="text-white/90 leading-tight text-[9px] font-semibold">
-                  {{ viewedCivCard.name }}
-                </div>
-                <div
-                  v-if="viewedCivCard.description"
-                  class="text-white/50 text-[7px] leading-tight mt-0.5"
-                >
-                  {{ viewedCivCard.description }}
-                </div>
-              </div>
-              <div class="text-white/30 text-[8px]">
-                Era {{ viewedCivCard.era }}
-              </div>
-            </div>
-          </div>
+					<!-- Active civilisation card -->
+					<div
+						v-if="viewedCivCard"
+						class="shrink-0 pl-2 border-l border-slate-700/40"
+					>
+						<div
+							class="w-[72px] h-[100px] rounded-lg border text-xs font-medium flex flex-col justify-between p-1.5"
+							:class="[BACK_COLOR_CLASSES[viewedCivCard.backColor], BACK_COLOR_BORDER[viewedCivCard.backColor]]"
+							:title="viewedCivCard.description ?? ''"
+						>
+							<div>
+								<div class="text-white/90 leading-tight text-[9px] font-semibold">
+									{{ viewedCivCard.name }}
+								</div>
+								<div
+									v-if="viewedCivCard.description"
+									class="text-white/50 text-[7px] leading-tight mt-0.5"
+								>
+									{{ viewedCivCard.description }}
+								</div>
+							</div>
+							<div class="text-white/30 text-[8px]">
+								Era {{ viewedCivCard.era }}
+							</div>
+						</div>
+					</div>
 
-          <!-- Spacer to push actions right -->
-          <div class="flex-1" />
+					<!-- Spacer to push actions right -->
+					<div class="flex-1" />
 
-          <!-- Invasion track + Action icons (right-aligned, stacked) -->
-          <div class="flex flex-col items-stretch gap-2.5 shrink-0 pl-1 border-l border-slate-700/40">
-            <!-- Invasion track -->
-            <div class="flex items-center justify-between gap-0.5">
-              <template
-                v-for="(cost, idx) in INVASION_COSTS"
-                :key="`inv-${idx}`"
-              >
-                <IconChevronRight
-                  class="text-slate-500 shrink-0"
-                  :size="14"
-                />
-                <div
-                  class="w-7 h-7 rounded border flex items-center justify-center text-sm font-bold shrink-0 transition-colors"
-                  :class="
-                    idx < (viewedPlayer?.invasionTrackPos ?? 0)
-                      ? 'border-slate-700/40 bg-slate-800/30 text-slate-600 line-through'
-                      : idx === (viewedPlayer?.invasionTrackPos ?? 0)
-                        ? 'border-red-500/60 bg-red-900/30 text-red-400'
-                        : 'border-slate-600 bg-slate-700/50 text-amber-400'
-                  "
-                >
-                  {{ cost }}
-                </div>
-              </template>
-            </div>
+					<!-- Invasion track + Action icons (right-aligned, stacked) -->
+					<div class="flex flex-col items-stretch gap-2.5 shrink-0 pl-1 border-l border-slate-700/40">
+						<!-- Invasion track -->
+						<div class="flex items-center justify-between gap-0.5">
+							<template
+								v-for="(cost, idx) in INVASION_COSTS"
+								:key="`inv-${idx}`"
+							>
+								<IconChevronRight
+									class="text-slate-500 shrink-0"
+									:size="14"
+								/>
+								<div
+									class="w-7 h-7 rounded border flex items-center justify-center text-sm font-bold shrink-0 transition-colors"
+									:class="
+										idx < (viewedPlayer?.invasionTrackPos ?? 0)
+											? 'border-slate-700/40 bg-slate-800/30 text-slate-600 line-through'
+											: idx === (viewedPlayer?.invasionTrackPos ?? 0)
+												? 'border-red-500/60 bg-red-900/30 text-red-400'
+												: 'border-slate-600 bg-slate-700/50 text-amber-400'
+									"
+								>
+									{{ cost }}
+								</div>
+							</template>
+						</div>
 
-            <!-- Action icons -->
-            <div
-              v-if="!activePrompt"
-              class="flex items-center gap-3"
-            >
-              <!-- Worker actions group -->
-              <div class="flex items-center gap-1.5">
-                <IconMeeple
-                  :size="20"
-                  class="text-slate-500 shrink-0"
-                  title="Requires a worker"
-                />
-                <div class="grid grid-cols-2 gap-1">
-                  <button
-                    v-for="action in ACTION_TYPES.slice(0, 4)"
-                    :key="action.type"
-                    class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
-                    :class="
-                      canDoAction(action.type)
-                        ? 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
-                        : 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default'
-                    "
-                    :disabled="!canDoAction(action.type)"
-                    :title="action.label"
-                    @click="canDoAction(action.type) && onAction(action.type)"
-                  >
-                    <component
-                      :is="ACTION_ICONS[action.type]"
-                      :size="18"
-                    />
-                  </button>
-                </div>
-              </div>
+						<!-- Action icons -->
+						<div
+							v-if="!activePrompt"
+							class="flex items-center gap-3"
+						>
+							<!-- Worker actions group -->
+							<div class="flex items-center gap-1.5">
+								<IconMeeple
+									:size="20"
+									class="text-slate-500 shrink-0"
+									title="Requires a worker"
+								/>
+								<div class="grid grid-cols-2 gap-1">
+									<button
+										v-for="action in ACTION_TYPES.slice(0, 4)"
+										:key="action.type"
+										class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
+										:class="
+											canDoAction(action.type)
+												? 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
+												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default'
+										"
+										:disabled="!canDoAction(action.type)"
+										:title="action.label"
+										@click="canDoAction(action.type) && onAction(action.type)"
+									>
+										<component
+											:is="ACTION_ICONS[action.type]"
+											:size="18"
+										/>
+									</button>
+								</div>
+							</div>
 
-              <!-- Divider -->
-              <div class="w-px h-16 bg-slate-700/40" />
+							<!-- Divider -->
+							<div class="w-px h-16 bg-slate-700/40" />
 
-              <!-- Non-worker actions group -->
-              <div class="flex items-center gap-1.5">
-                <div
-                  class="relative shrink-0"
-                  title="No worker needed"
-                >
-                  <IconMeeple
-                    :size="20"
-                    class="text-slate-500"
-                  />
-                  <div class="absolute inset-0 flex items-center justify-center">
-                    <div class="w-[22px] h-[2px] bg-slate-500 rotate-45" />
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-1">
-                  <button
-                    v-for="action in ACTION_TYPES.slice(4, 8)"
-                    :key="action.type"
-                    class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
-                    :class="[
-                      canDoAction(action.type)
-                        ? action.type === 'startGoldenAge'
-                          ? 'bg-amber-900/40 border-amber-600/50 hover:bg-amber-800/50 text-amber-200 cursor-pointer'
-                          : 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
-                        : 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default',
-                    ]"
-                    :disabled="!canDoAction(action.type)"
-                    :title="action.label"
-                    @click="canDoAction(action.type) && onAction(action.type)"
-                  >
-                    <component
-                      :is="ACTION_ICONS[action.type]"
-                      :size="18"
-                    />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+							<!-- Non-worker actions group -->
+							<div class="flex items-center gap-1.5">
+								<div
+									class="relative shrink-0"
+									title="No worker needed"
+								>
+									<IconMeeple
+										:size="20"
+										class="text-slate-500"
+									/>
+									<div class="absolute inset-0 flex items-center justify-center">
+										<div class="w-[22px] h-[2px] bg-slate-500 rotate-45" />
+									</div>
+								</div>
+								<div class="grid grid-cols-2 gap-1">
+									<button
+										v-for="action in ACTION_TYPES.slice(4, 8)"
+										:key="action.type"
+										class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
+										:class="[
+											canDoAction(action.type)
+												? action.type === 'startGoldenAge'
+													? 'bg-amber-900/40 border-amber-600/50 hover:bg-amber-800/50 text-amber-200 cursor-pointer'
+													: 'bg-slate-700/50 border-slate-600/50 hover:bg-slate-600/50 text-slate-200 cursor-pointer'
+												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default',
+										]"
+										:disabled="!canDoAction(action.type)"
+										:title="action.label"
+										@click="canDoAction(action.type) && onAction(action.type)"
+									>
+										<component
+											:is="ACTION_ICONS[action.type]"
+											:size="18"
+										/>
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
 
-      <!-- Grid area: 5 cols x 4 rows -->
-      <div
-        ref="techGridEl"
-        class="p-2 md:p-4 overflow-x-auto"
-      >
-        <div
-          class="grid gap-1 min-w-[480px]"
-          style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 85px)"
-        >
-          <template
-            v-for="(row, rIdx) in TECH_TREE"
-            :key="`row-${rIdx}`"
-          >
-            <div
-              v-for="(tech, cIdx) in row"
-              :key="`tech-${rIdx}-${cIdx}`"
-              class="group rounded-sm px-3 py-2 flex items-start relative overflow-hidden transition-colors border"
-              :class="[
-                isTechSelectionActive &&
-                  isViewingSelf &&
-                  effectiveTechState(rIdx, cIdx) === 'available' &&
-                  effectiveTechAffordable(rIdx, cIdx)
-                  ? 'cursor-pointer ring-1 ring-amber-400/60 hover:ring-amber-400 hover:opacity-100'
-                  : '',
-                effectiveTechState(rIdx, cIdx) === 'locked' ? 'opacity-50' : '',
-                japanTechQueue.some(([r, c]) => r === rIdx && c === cIdx) ? 'ring-2 ring-green-400' : '',
-              ]"
-              :style="{
-                gridColumn: cIdx + 1,
-                gridRow: rIdx + 1,
-                backgroundColor:
-                  effectiveTechState(rIdx, cIdx) === 'researched'
-                    ? researchedStyle.bg
-                    : effectiveTechState(rIdx, cIdx) === 'available'
-                      ? '#1e293b'
-                      : '#0f172a',
-                borderColor:
-                  effectiveTechState(rIdx, cIdx) === 'researched'
-                    ? researchedStyle.border
-                    : effectiveTechState(rIdx, cIdx) === 'available'
-                      ? '#334155'
-                      : '#1e293b',
-                borderWidth: effectiveTechState(rIdx, cIdx) === 'researched' ? '2px' : '1px',
-              }"
-              :title="tech.description"
-              @click="
-                isTechSelectionActive &&
-                  isViewingSelf &&
-                  effectiveTechState(rIdx, cIdx) === 'available' &&
-                  effectiveTechAffordable(rIdx, cIdx)
-                  ? onSelectTech(rIdx, cIdx)
-                  : undefined
-              "
-            >
-              <span
-                v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
-                class="text-xs font-bold mr-3 shrink-0"
-                :class="
-                  (activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
-                    ? 'text-green-400'
-                    : 'text-amber-400/80'
-                "
-              >{{
-                (activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
-                  ? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
-                  : tech.cost
-              }}</span>
-              <span
-                class="text-sm font-semibold leading-tight truncate"
-                :class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-100' : 'text-slate-300'"
-              >{{ tech.name }}</span>
-              <div
-                v-if="viewedPlayer.boardCubes?.[`${rIdx + 1},${cIdx + 1}`]"
-                class="absolute top-2.5 right-2 flex gap-0.5"
-              >
-                <div
-                  v-for="n in viewedPlayer.boardCubes[`${rIdx + 1},${cIdx + 1}`]"
-                  :key="n"
-                  class="w-3.5 h-3.5"
-                  :class="PLAYER_COLOR_CLASSES[viewedPlayer.color]"
-                />
-              </div>
-              <div
-                class="hidden group-hover:flex absolute z-10 left-0 top-full mt-1 px-2 py-1.5 bg-slate-900 border border-slate-600 rounded shadow-lg text-[10px] text-slate-300 leading-snug whitespace-normal max-w-[200px] pointer-events-none"
-              >
-                {{ tech.description }}
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </div>
+			<!-- Grid area: 5 cols x 4 rows -->
+			<div
+				ref="techGridEl"
+				class="p-2 md:p-4 overflow-x-auto"
+			>
+				<div
+					class="grid gap-1 min-w-[480px]"
+					style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 85px)"
+				>
+					<template
+						v-for="(row, rIdx) in TECH_TREE"
+						:key="`row-${rIdx}`"
+					>
+						<div
+							v-for="(tech, cIdx) in row"
+							:key="`tech-${rIdx}-${cIdx}`"
+							class="group rounded-sm px-3 py-2 flex items-start relative overflow-hidden transition-colors border"
+							:class="[
+								isTechSelectionActive &&
+									isViewingSelf &&
+									effectiveTechState(rIdx, cIdx) === 'available' &&
+									effectiveTechAffordable(rIdx, cIdx)
+									? 'cursor-pointer ring-1 ring-amber-400/60 hover:ring-amber-400 hover:opacity-100'
+									: '',
+								effectiveTechState(rIdx, cIdx) === 'locked' ? 'opacity-50' : '',
+								japanTechQueue.some(([r, c]) => r === rIdx && c === cIdx) ? 'ring-2 ring-green-400' : '',
+							]"
+							:style="{
+								gridColumn: cIdx + 1,
+								gridRow: rIdx + 1,
+								backgroundColor:
+									effectiveTechState(rIdx, cIdx) === 'researched'
+										? researchedStyle.bg
+										: effectiveTechState(rIdx, cIdx) === 'available'
+											? '#1e293b'
+											: '#0f172a',
+								borderColor:
+									effectiveTechState(rIdx, cIdx) === 'researched'
+										? researchedStyle.border
+										: effectiveTechState(rIdx, cIdx) === 'available'
+											? '#334155'
+											: '#1e293b',
+								borderWidth: effectiveTechState(rIdx, cIdx) === 'researched' ? '2px' : '1px',
+							}"
+							:title="tech.description"
+							@click="
+								isTechSelectionActive &&
+									isViewingSelf &&
+									effectiveTechState(rIdx, cIdx) === 'available' &&
+									effectiveTechAffordable(rIdx, cIdx)
+									? onSelectTech(rIdx, cIdx)
+									: undefined
+							"
+						>
+							<span
+								v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
+								class="text-xs font-bold mr-3 shrink-0"
+								:class="
+									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
+										? 'text-green-400'
+										: 'text-amber-400/80'
+								"
+							>{{
+								(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
+									? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
+									: tech.cost
+							}}</span>
+							<span
+								class="text-sm font-semibold leading-tight truncate"
+								:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-100' : 'text-slate-300'"
+							>{{ tech.name }}</span>
+							<div
+								v-if="viewedPlayer.boardCubes?.[`${rIdx + 1},${cIdx + 1}`]"
+								class="absolute top-2.5 right-2 flex gap-0.5"
+							>
+								<div
+									v-for="n in viewedPlayer.boardCubes[`${rIdx + 1},${cIdx + 1}`]"
+									:key="n"
+									class="w-3.5 h-3.5"
+									:class="PLAYER_COLOR_CLASSES[viewedPlayer.color]"
+								/>
+							</div>
+							<div
+								class="hidden group-hover:flex absolute z-10 left-0 top-full mt-1 px-2 py-1.5 bg-slate-900 border border-slate-600 rounded shadow-lg text-[10px] text-slate-300 leading-snug whitespace-normal max-w-[200px] pointer-events-none"
+							>
+								{{ tech.description }}
+							</div>
+						</div>
+					</template>
+				</div>
+			</div>
+		</div>
 
-    <!-- Spacer so content doesn't hide behind the pinned hand -->
-    <div
-      v-if="myPlayer?.hand?.length"
-      class="h-32"
-    />
-  </div>
+		<!-- Spacer so content doesn't hide behind the pinned hand -->
+		<div
+			v-if="myPlayer?.hand?.length"
+			class="h-32"
+		/>
+	</div>
 
-  <!-- Pinned hand at the bottom of the viewport -->
-  <div
-    v-if="myPlayer?.hand?.length"
-    class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 border-t border-slate-700 backdrop-blur-sm px-3 md:px-6 py-2 md:py-3"
-  >
-    <div class="max-w-5xl mx-auto">
-      <div class="flex items-center gap-2 md:gap-3 overflow-x-auto">
-        <div
-          v-for="card in myPlayer.hand"
-          :key="card.id"
-          class="w-[60px] h-[84px] md:w-[70px] md:h-[98px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-1.5 md:p-2"
-          :class="[BACK_COLOR_CLASSES[card.backColor], BACK_COLOR_BORDER[card.backColor]]"
-          :title="card.description ?? ''"
-        >
-          <div class="text-white/90 leading-tight text-[10px]">
-            {{ card.name }}
-          </div>
-          <div
-            v-if="card.description && card.futureTechType"
-            class="text-white/60 text-[8px] leading-tight"
-          >
-            {{ card.description }}
-          </div>
-          <div
-            v-else
-            class="text-white/50 text-[9px]"
-          >
-            {{ card.era ? `Era ${card.era}` : card.cardType }}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+	<!-- Pinned hand at the bottom of the viewport -->
+	<div
+		v-if="myPlayer?.hand?.length"
+		class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 border-t border-slate-700 backdrop-blur-sm px-3 md:px-6 py-2 md:py-3"
+	>
+		<div class="max-w-5xl mx-auto">
+			<div class="flex items-center gap-2 md:gap-3 overflow-x-auto">
+				<div
+					v-for="card in myPlayer.hand"
+					:key="card.id"
+					class="w-[60px] h-[84px] md:w-[70px] md:h-[98px] rounded-lg border-2 text-xs font-medium shrink-0 flex flex-col justify-between p-1.5 md:p-2"
+					:class="[BACK_COLOR_CLASSES[card.backColor], BACK_COLOR_BORDER[card.backColor]]"
+					:title="card.description ?? ''"
+				>
+					<div class="text-white/90 leading-tight text-[10px]">
+						{{ card.name }}
+					</div>
+					<div
+						v-if="card.description && card.futureTechType"
+						class="text-white/60 text-[8px] leading-tight"
+					>
+						{{ card.description }}
+					</div>
+					<div
+						v-else
+						class="text-white/50 text-[9px]"
+					>
+						{{ card.era ? `Era ${card.era}` : card.cardType }}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
 
-  <!-- Game Over overlay: reveal scores one-by-one, then show final standings -->
-  <div
-    v-if="gameIsOver && !gameOverDismissed"
-    class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center"
-  >
-    <div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
-      <h2 class="text-2xl font-bold text-amber-300 text-center mb-2">
-        Game Over
-      </h2>
-      <p
-        v-if="!allScoresRevealed"
-        class="text-slate-400 text-sm text-center mb-6"
-      >
-        Revealing scores…
-      </p>
-      <p
-        v-else
-        class="text-amber-200/90 text-sm text-center mb-6 font-medium"
-      >
-        Final standings
-      </p>
+	<!-- Game Over overlay: reveal scores one-by-one, then show final standings -->
+	<div
+		v-if="gameIsOver && !gameOverDismissed"
+		class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center"
+	>
+		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
+			<h2 class="text-2xl font-bold text-amber-300 text-center mb-2">
+				Game Over
+			</h2>
+			<p
+				v-if="!allScoresRevealed"
+				class="text-slate-400 text-sm text-center mb-6"
+			>
+				Revealing scores…
+			</p>
+			<p
+				v-else
+				class="text-amber-200/90 text-sm text-center mb-6 font-medium"
+			>
+				Final standings
+			</p>
 
-      <!-- Phase 1: reveal order — one score at a time -->
-      <div
-        v-if="!allScoresRevealed"
-        class="space-y-3"
-      >
-        <div
-          v-for="(r, idx) in playersInRevealOrder"
-          :key="r.playerId"
-          class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
-          :class="idx < revealedScoresCount ? 'bg-slate-700/60 border border-slate-500/40' : 'bg-slate-800/60 border border-slate-600/20'"
-        >
-          <span class="text-lg font-bold w-7 text-center text-slate-500">{{ idx + 1 }}</span>
-          <div
-            class="w-4 h-4 rounded-full shrink-0"
-            :class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
-          />
-          <span
-            class="font-medium capitalize flex-1"
-            :class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
-          >
-            {{ G!.players[r.playerId].color }}
-          </span>
-          <div class="text-right min-w-[100px]">
-            <Transition
-              name="score-reveal"
-              mode="out-in"
-            >
-              <span
-                v-if="idx < revealedScoresCount"
-                key="score"
-                class="text-lg font-bold text-slate-200 tabular-nums"
-              >
-                {{ r.score }} VP
-                <span class="text-xs text-slate-500 ml-1 font-normal">({{ r.cities }} cities)</span>
-              </span>
-              <span
-                v-else
-                key="hidden"
-                class="text-slate-500 text-lg"
-              >—</span>
-            </Transition>
-          </div>
-        </div>
-      </div>
+			<!-- Phase 1: reveal order — one score at a time -->
+			<div
+				v-if="!allScoresRevealed"
+				class="space-y-3"
+			>
+				<div
+					v-for="(r, idx) in playersInRevealOrder"
+					:key="r.playerId"
+					class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
+					:class="idx < revealedScoresCount ? 'bg-slate-700/60 border border-slate-500/40' : 'bg-slate-800/60 border border-slate-600/20'"
+				>
+					<span class="text-lg font-bold w-7 text-center text-slate-500">{{ idx + 1 }}</span>
+					<div
+						class="w-4 h-4 rounded-full shrink-0"
+						:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
+					/>
+					<span
+						class="font-medium capitalize flex-1"
+						:class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
+					>
+						{{ G!.players[r.playerId].color }}
+					</span>
+					<div class="text-right min-w-[100px]">
+						<Transition
+							name="score-reveal"
+							mode="out-in"
+						>
+							<span
+								v-if="idx < revealedScoresCount"
+								key="score"
+								class="text-lg font-bold text-slate-200 tabular-nums"
+							>
+								{{ r.score }} VP
+								<span class="text-xs text-slate-500 ml-1 font-normal">({{ r.cities }} cities)</span>
+							</span>
+							<span
+								v-else
+								key="hidden"
+								class="text-slate-500 text-lg"
+							>—</span>
+						</Transition>
+					</div>
+				</div>
+			</div>
 
-      <!-- Phase 2: final rankings with winner highlight -->
-      <div
-        v-else
-        class="space-y-3"
-      >
-        <div
-          v-for="(r, idx) in finalRankings"
-          :key="r.playerId"
-          class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
-          :class="idx === 0 ? 'bg-amber-900/40 border border-amber-600/40' : 'bg-slate-700/40 border border-slate-600/30'"
-        >
-          <span
-            class="text-lg font-bold w-7 text-center"
-            :class="idx === 0 ? 'text-amber-300' : 'text-slate-400'"
-          >
-            {{ idx === 0 ? '★' : idx + 1 }}
-          </span>
-          <div
-            class="w-4 h-4 rounded-full shrink-0"
-            :class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
-          />
-          <span
-            class="font-medium capitalize flex-1"
-            :class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
-          >
-            {{ G!.players[r.playerId].color }}
-          </span>
-          <div class="text-right">
-            <span
-              class="text-lg font-bold"
-              :class="idx === 0 ? 'text-amber-200' : 'text-slate-200'"
-            > {{ r.score }} VP </span>
-            <span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
-          </div>
-        </div>
-      </div>
+			<!-- Phase 2: final rankings with winner highlight -->
+			<div
+				v-else
+				class="space-y-3"
+			>
+				<div
+					v-for="(r, idx) in finalRankings"
+					:key="r.playerId"
+					class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
+					:class="idx === 0 ? 'bg-amber-900/40 border border-amber-600/40' : 'bg-slate-700/40 border border-slate-600/30'"
+				>
+					<span
+						class="text-lg font-bold w-7 text-center"
+						:class="idx === 0 ? 'text-amber-300' : 'text-slate-400'"
+					>
+						{{ idx === 0 ? '★' : idx + 1 }}
+					</span>
+					<div
+						class="w-4 h-4 rounded-full shrink-0"
+						:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
+					/>
+					<span
+						class="font-medium capitalize flex-1"
+						:class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
+					>
+						{{ G!.players[r.playerId].color }}
+					</span>
+					<div class="text-right">
+						<span
+							class="text-lg font-bold"
+							:class="idx === 0 ? 'text-amber-200' : 'text-slate-200'"
+						> {{ r.score }} VP </span>
+						<span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
+					</div>
+				</div>
+			</div>
 
-      <div class="flex justify-center gap-3 mt-6">
-        <button
-          class="px-5 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors cursor-pointer"
-          @click="$emit('backToLobby')"
-        >
-          Back to Lobby
-        </button>
-        <button
-          class="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium transition-colors cursor-pointer"
-          @click="gameOverDismissed = true"
-        >
-          View Board
-        </button>
-      </div>
-    </div>
-  </div>
+			<div class="flex justify-center gap-3 mt-6">
+				<button
+					class="px-5 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors cursor-pointer"
+					@click="$emit('backToLobby')"
+				>
+					Back to Lobby
+				</button>
+				<button
+					class="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium transition-colors cursor-pointer"
+					@click="gameOverDismissed = true"
+				>
+					View Board
+				</button>
+			</div>
+		</div>
+	</div>
 </template>
 
 <style scoped>

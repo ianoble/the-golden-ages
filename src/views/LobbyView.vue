@@ -90,6 +90,15 @@ const showCreateForm = ref(false);
 const numPlayers = ref(gameDef.minPlayers);
 const creating = ref(false);
 
+function buildDefaultSetupData(): Record<string, unknown> {
+	const data: Record<string, unknown> = {};
+	for (const opt of gameDef.setupOptions ?? []) {
+		data[opt.id] = opt.default;
+	}
+	return data;
+}
+const setupData = ref<Record<string, unknown>>(buildDefaultSetupData());
+
 const hostedMatchID = ref<string | null>(null);
 const hostedPlayers = ref<MatchPlayer[]>([]);
 const linkCopied = ref(false);
@@ -187,7 +196,10 @@ async function createMatch() {
 		const createRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/create`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...authHeaders() },
-			body: JSON.stringify({ numPlayers: numPlayers.value }),
+			body: JSON.stringify({
+				numPlayers: numPlayers.value,
+				setupData: setupData.value,
+			}),
 		});
 		if (createRes.status === 403) throw new Error("Authentication required to create games");
 		if (!createRes.ok) throw new Error("Server rejected match creation");
@@ -210,6 +222,7 @@ async function createMatch() {
 
 		hostedMatchID.value = matchID;
 		showCreateForm.value = false;
+		setupData.value = buildDefaultSetupData();
 		viewMode.value = "hosting";
 		startHostPolling(matchID);
 	} catch (e: unknown) {
@@ -596,6 +609,29 @@ onUnmounted(stopPolling);
 								<span class="text-sm text-slate-500 ml-1">({{ gameDef.minPlayers }}&ndash;{{ gameDef.maxPlayers }})</span>
 							</div>
 						</div>
+
+						<!-- Setup options (driven by gameDef.setupOptions) -->
+						<template v-if="gameDef.setupOptions?.length">
+							<div v-for="opt in gameDef.setupOptions" :key="opt.id" class="space-y-1">
+								<label v-if="opt.type === 'boolean'" class="flex items-center gap-3 cursor-pointer select-none">
+									<button
+										type="button"
+										role="switch"
+										:aria-checked="!!setupData[opt.id]"
+										class="relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800"
+										:class="setupData[opt.id] ? 'bg-blue-600' : 'bg-slate-600'"
+										@click="setupData[opt.id] = !setupData[opt.id]"
+									>
+										<span
+											class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform"
+											:class="setupData[opt.id] ? 'translate-x-5' : 'translate-x-0'"
+										/>
+									</button>
+									<span class="text-sm font-medium">{{ opt.label }}</span>
+								</label>
+								<p v-if="opt.description" class="text-xs text-slate-500 ml-14">{{ opt.description }}</p>
+							</div>
+						</template>
 
 						<div class="flex gap-2">
 							<button

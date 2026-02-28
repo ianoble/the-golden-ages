@@ -347,8 +347,12 @@ const MAX_LOG_ENTRIES = 150;
 function appendLog(G: GoldenAgesState, ctx: Ctx, message: string): void {
 	const player = G.players[ctx.currentPlayer];
 	const playerColor = player?.color;
-	G.history.push({ message, playerColor });
-	if (G.history.length > MAX_LOG_ENTRIES) G.history.shift();
+	G.gameLog.push({ message, playerColor });
+	if (G.gameLog.length > MAX_LOG_ENTRIES) G.gameLog.shift();
+}
+
+export interface GoldenAgesSetupData {
+	expansion?: boolean;
 }
 
 export interface GoldenAgesState extends BaseGameState {
@@ -374,7 +378,8 @@ export interface GoldenAgesState extends BaseGameState {
 	eraIVRemainingTurns: number;
 	endGameScored: boolean;
 	boardEdges: Record<string, CellEdges>;
-	history: GameLogEntry[];
+	gameLog: GameLogEntry[];
+	setupOptions: { expansion: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -1277,7 +1282,9 @@ function relocateCapital(
 const GoldenAgesGame: Game<GoldenAgesState> = {
 	name: 'TheGoldenAges',
 
-	setup: ({ ctx }: { ctx: Ctx }): GoldenAgesState => {
+	setup: ({ ctx }: { ctx: Ctx }, setupData?: GoldenAgesSetupData): GoldenAgesState => {
+		const opts = { expansion: setupData?.expansion ?? false };
+
 		const board = createSquareBoard<GamePiece>(BOARD_ROWS, BOARD_COLS);
 
 		const tiles = createTileLayer();
@@ -1397,7 +1404,9 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				'3,4': [L, L, L, L],
 				'3,5': [L, W, L, L],
 			},
+			gameLog: [],
 			history: [],
+			setupOptions: opts,
 		};
 
 		revealEraCards(state, ctx.numPlayers);
@@ -2071,4 +2080,13 @@ export const gameDef = defineGame<GoldenAgesState>({
 	description: 'Build your civilisation across the ages and leave your mark on history.',
 	minPlayers: 2,
 	maxPlayers: 4,
+	setupOptions: [
+		{
+			type: 'boolean',
+			id: 'expansion',
+			label: 'Expansion',
+			description: 'Include expansion civilizations, wonders, and buildings.',
+			default: false,
+		},
+	],
 });

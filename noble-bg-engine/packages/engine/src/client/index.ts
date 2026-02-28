@@ -11,11 +11,14 @@ export type { DragPayload, DropZone, DragState, CardDragContext } from './compos
 export { provideCardInspect, useCardInspect } from './composables/useCardInspect.js';
 export type { CardInspectContext } from './composables/useCardInspect.js';
 
+export { useTurnNotifications } from './composables/useTurnNotifications.js';
+export type { TurnNotificationOptions, TurnNotificationReturn } from './composables/useTurnNotifications.js';
+
 // Game registration (re-exported here so client apps use the same module
 // instance as the store — avoids the dist/src dual-instance problem).
 export { registerGame } from '../games/registry.js';
 export { defineGame } from '../types/index.js';
-export type { BaseGameState, GameDefinition } from '../types/index.js';
+export type { BaseGameState, GameDefinition, GameSetupOption, GameSetupOptionBoolean } from '../types/index.js';
 
 // Re-export boardgame.io types/values so consumers don't need a direct dependency.
 export type { Game, Ctx } from 'boardgame.io';
