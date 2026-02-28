@@ -751,6 +751,9 @@ const BACK_COLOR_BORDER: Record<BackColor, string> = {
 
 const historyCards = computed(() => G.value?.historyJudgementCards ?? []);
 
+const gameLogEntries = computed(() => G.value?.history ?? []);
+const gameLogOpen = ref(false);
+
 // ---------------------------------------------------------------------------
 // Player data
 // ---------------------------------------------------------------------------
@@ -2528,6 +2531,46 @@ watch(activePrompt, (newVal) => {
 							<div v-if="card.description" class="text-orange-300/50 text-[8px] leading-tight mt-0.5">{{ card.description }}</div>
 						</div>
 						<div class="text-orange-400/60 text-[9px]">Building</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Game log (collapsible) -->
+			<div class="order-4 w-full md:max-w-xs shrink-0 flex flex-col">
+				<button
+					type="button"
+					class="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-600/50 text-left text-sm font-medium text-slate-300 hover:bg-slate-700/80 hover:text-slate-200 transition-colors"
+					@click="gameLogOpen = !gameLogOpen"
+				>
+					<span>Game log</span>
+					<span class="text-slate-500 text-xs">{{ gameLogEntries.length }} entries</span>
+					<svg class="w-4 h-4 text-slate-500 transition-transform" :class="gameLogOpen ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				<div v-show="gameLogOpen" class="mt-2 rounded-lg border border-slate-600/50 bg-slate-800/90 overflow-hidden flex flex-col max-h-48">
+					<div class="overflow-y-auto flex-1 min-h-0 p-2 space-y-1 text-xs">
+						<template v-if="gameLogEntries.length === 0">
+							<p class="text-slate-500 italic py-2">No actions yet.</p>
+						</template>
+						<div
+							v-for="(entry, i) in [...gameLogEntries].reverse()"
+							:key="`log-${i}-${entry.message}`"
+							class="flex items-center gap-2 py-1 px-2 rounded bg-slate-800/60"
+						>
+							<div
+								v-if="entry.playerColor"
+								class="w-2 h-2 rounded-full shrink-0"
+								:class="PLAYER_COLOR_CLASSES[entry.playerColor]"
+							/>
+							<span class="text-slate-300 truncate flex-1 min-w-0">
+								<template v-if="entry.playerColor">
+									<span class="capitalize font-medium" :class="PLAYER_COLOR_TEXT[entry.playerColor]">{{ entry.playerColor }}:</span>
+									{{ entry.message }}
+								</template>
+								<template v-else>{{ entry.message }}</template>
+							</span>
+						</div>
 					</div>
 				</div>
 			</div>

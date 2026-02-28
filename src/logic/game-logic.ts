@@ -337,6 +337,20 @@ export interface BoardCity {
 	cubes: number;
 }
 
+export interface GameLogEntry {
+	message: string;
+	playerColor?: string;
+}
+
+const MAX_LOG_ENTRIES = 150;
+
+function appendLog(G: GoldenAgesState, ctx: Ctx, message: string): void {
+	const player = G.players[ctx.currentPlayer];
+	const playerColor = player?.color;
+	G.history.push({ message, playerColor });
+	if (G.history.length > MAX_LOG_ENTRIES) G.history.shift();
+}
+
 export interface GoldenAgesState extends BaseGameState {
 	board: SquareBoard<GamePiece>;
 	tiles: TileLayer;
@@ -360,6 +374,7 @@ export interface GoldenAgesState extends BaseGameState {
 	eraIVRemainingTurns: number;
 	endGameScored: boolean;
 	boardEdges: Record<string, CellEdges>;
+	history: GameLogEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1412,16 +1427,19 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			if (era === 'I') {
 				G.activeCivCard[ctx.currentPlayer] = newCard;
 				applyCivCardEffect(G, player, newCard, indiaRow);
+				appendLog(G, ctx, 'chose civilisation card');
 			} else {
-				if (keepOld) {
-					// Discard the new card (just removed from hand already)
-				} else {
-					G.activeCivCard[ctx.currentPlayer] = newCard;
-					applyCivCardEffect(G, player, newCard, indiaRow);
-				}
+			if (keepOld) {
+				// Discard the new card (just removed from hand already)
+				appendLog(G, ctx, 'kept previous civilisation');
+			} else {
+				G.activeCivCard[ctx.currentPlayer] = newCard;
+				applyCivCardEffect(G, player, newCard, indiaRow);
+				appendLog(G, ctx, 'chose civilisation card');
 			}
+		}
 
-			G.eraStartDone++;
+		G.eraStartDone++;
 			if (G.eraStartDone >= ctx.numPlayers) {
 				// Determine first player: lowest civ card number
 				let lowestNum = Infinity;
@@ -1537,6 +1555,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				}
 			}
 
+			appendLog(G, ctx, moveCapital ? 'placed a tile (moved capital)' : 'placed a tile');
 			G.tilesPlacedThisEra++;
 			if (G.tilesPlacedThisEra >= ctx.numPlayers) {
 				G.phase = 'actions';
@@ -1618,6 +1637,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					}
 					if (hasWonder(player, 'hagiaSophia')) player.gold += 2;
 				}
+				appendLog(G, ctx, foundCity ? 'Explorer (founded a city)' : 'Explorer');
 			} else if (actionType === 'soldier') {
 				const workerId = argA as string;
 				const destRow = argB as number;
@@ -1730,6 +1750,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					}
 					if (hasWonder(player, 'hagiaSophia')) player.gold += 2;
 				}
+				appendLog(G, ctx, foundCity ? 'Soldier (founded a city)' : 'Soldier');
 			} else if (actionType === 'artist') {
 				const workerId = argA as string;
 				if (!workerId) return INVALID_MOVE;
@@ -1744,6 +1765,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				if (player.researchedTechs[2][4]) player.score += 2;
 				if (G.activeCivCard[ctx.currentPlayer]?.civType === 'eu') player.gold += 4;
+				appendLog(G, ctx, 'Artist');
 			} else if (actionType === 'builder') {
 				const workerId = argA as string;
 				const buildingCardId = argB as unknown as string;
@@ -1774,6 +1796,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				const [card] = G.availableBuildings.splice(cardIdx, 1);
 				player.builtBuildings[targetSlot] = card;
+				appendLog(G, ctx, 'Builder');
 			} else if (actionType === 'buildWonder') {
 				const wonderCardId = argA as string;
 				if (!wonderCardId) return INVALID_MOVE;
@@ -1820,6 +1843,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				player.activatedWonders.push(false);
 
 				applyWonderInstantEffect(G, player, card, ctx.currentPlayer);
+				appendLog(G, ctx, 'Built a Wonder');
 			} else if (actionType === 'activateBuildingOrWonder') {
 				const rawIndex = argA as number;
 				if (rawIndex === undefined) return INVALID_MOVE;
@@ -1923,6 +1947,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						return INVALID_MOVE;
 					}
 				}
+				appendLog(G, ctx, 'Activated building or wonder');
 			} else if (actionType === 'startGoldenAge') {
 				const standingWorkers = G.pieces.filter(
 					(p) => p.type === 'worker' && p.owner === ctx.currentPlayer && !p.exhausted && !p.inAgora,
@@ -1946,6 +1971,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				if (G.currentEra === 'IV' && isFirstThisEra) {
 					G.eraIVRemainingTurns = Object.keys(G.players).length - 1;
 				}
+				appendLog(G, ctx, 'Started Golden Age');
 			} else if (actionType === 'developTechnology') {
 				const isJapan = G.activeCivCard[ctx.currentPlayer]?.civType === 'japan';
 				const discount = isJapan ? 2 : 0;
@@ -1976,6 +2002,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 					applyImmediateTechEffects(G, player, row, col);
 				}
+				appendLog(G, ctx, 'Developed technology');
 			}
 
 			if (G.eraIVRemainingTurns > 0) {
@@ -2001,6 +2028,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			if (!player || !player.passedThisEra) return INVALID_MOVE;
 
 			player.gold += GOLDEN_AGE_INCOME;
+			appendLog(G, ctx, 'Collected 2 gold (Golden Age)');
 
 			if (G.eraIVRemainingTurns > 0) {
 				G.eraIVRemainingTurns--;
