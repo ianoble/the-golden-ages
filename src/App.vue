@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NobleProvider } from "@noble/bg-engine/client";
+import { NobleProvider } from "../noble-bg-engine/packages/engine/src/client";
 import { SERVER_URL } from "./config";
 </script>
 
