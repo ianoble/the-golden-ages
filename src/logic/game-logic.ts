@@ -19,7 +19,7 @@ import {
 	type TileLayer,
 	type TileRotation,
 	type TileShape,
-} from '@noble/bg-engine';
+} from '../../noble-bg-engine/packages/engine/src';
 
 // ---------------------------------------------------------------------------
 // Types
