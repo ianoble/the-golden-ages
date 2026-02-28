@@ -219,7 +219,7 @@ function onCellClick(row: number, col: number) {
 
 	if (soldierPhase.value === "selectDest") {
 		const key = `${row},${col}`;
-		if (soldierReachableSet.value.has(key)) {
+		if (soldierReachableSet.value.has(key) && canAffordAttackAtCell(row, col)) {
 			onSelectSoldierDest(row, col);
 		}
 		return;
@@ -521,7 +521,7 @@ const CUBE_BG_CLASSES: Record<PlayerColor, string> = {
 function cellHasPointer(row: number, col: number): boolean {
 	const key = `${row},${col}`;
 
-	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key)) return true;
+	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key) && canAffordAttackAtCell(row, col)) return true;
 	if (soldierPhase.value === "selectWorker" && piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted))
 		return true;
 	if (explorerPhase.value === "selectDest" && explorerReachableSet.value.has(key)) return true;
@@ -560,7 +560,10 @@ function cellClasses(row: number, col: number): string {
 		const hasEnemy =
 			piecesAt(row, col).some((p) => p.type === "worker" && p.owner !== playerID.value && !p.inAgora) ||
 			(G.value?.cities ?? []).some((ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col);
-		if (hasEnemy) return "bg-red-500/25 border-2 border-red-400/60 hover:bg-red-500/40 hover:border-red-300 transition-colors";
+		if (hasEnemy) {
+			if (!canAffordAttackAtCell(row, col)) return "bg-slate-500/15 border-2 border-slate-500/30 cursor-not-allowed";
+			return "bg-red-500/25 border-2 border-red-400/60 hover:bg-red-500/40 hover:border-red-300 transition-colors";
+		}
 		return "bg-cyan-500/25 border-2 border-cyan-400/60";
 	}
 
@@ -598,10 +601,7 @@ function cellClasses(row: number, col: number): string {
 	if (isStartingTile(row, col)) {
 		base = `bg-amber-900/60 border border-amber-700/40 ${startingTileBorders(row, col)}`;
 	} else if (isPlayerTile(row, col)) {
-		const color = tileOwnerColor(row, col);
-		const bg = color ? PLAYER_TILE_BG[color] : "bg-slate-600";
-		const border = color ? PLAYER_TILE_BORDER[color] : "border-slate-500";
-		base = `${bg} border ${border} ${playerTileBorders(row, col)}`;
+		base = `bg-slate-700/60 border border-slate-500/40 ${playerTileBorders(row, col)}`;
 	}
 
 	// Idle actions phase: hover effect on cells with standing workers
@@ -752,7 +752,43 @@ const BACK_COLOR_BORDER: Record<BackColor, string> = {
 
 const historyCards = computed(() => G.value?.historyJudgementCards ?? []);
 
-const gameLogEntries = computed(() => G.value?.history ?? []);
+interface DisplayLogEntry {
+	message: string;
+	playerColor?: string;
+}
+
+const MOVE_LABELS: Record<string, string> = {
+	chooseCivCard: "Chose civilisation",
+	placeTile: "Placed a tile",
+	performAction: "Performed action",
+	collectGoldenAgeIncome: "Collected golden age income",
+};
+
+const gameLogEntries = computed<DisplayLogEntry[]>(() => {
+	const raw = G.value?.history;
+	if (!raw || !Array.isArray(raw)) return [];
+
+	const entries: DisplayLogEntry[] = [];
+	for (const item of raw) {
+		const rec = item as Record<string, unknown>;
+		if (typeof rec.message === "string" && rec.message) {
+			entries.push({
+				message: rec.message,
+				playerColor: typeof rec.playerColor === "string" ? rec.playerColor : undefined,
+			});
+		} else if (typeof rec.moveName === "string") {
+			const pid = typeof rec.playerID === "string" ? rec.playerID : null;
+			const color = pid && G.value?.players?.[pid]?.color;
+			const prev = entries[entries.length - 1];
+			if (prev && prev.playerColor === (color || undefined)) continue;
+			entries.push({
+				message: MOVE_LABELS[rec.moveName] ?? rec.moveName,
+				playerColor: color || undefined,
+			});
+		}
+	}
+	return entries;
+});
 const gameLogOpen = ref(false);
 
 // ---------------------------------------------------------------------------
@@ -776,6 +812,13 @@ const PLAYER_COLOR_TEXT: Record<string, string> = {
 	blue: "text-blue-400",
 	green: "text-green-400",
 	yellow: "text-yellow-400",
+};
+
+const PLAYER_COLOR_HEX: Record<string, string> = {
+	red: "#f87171",
+	blue: "#60a5fa",
+	green: "#4ade80",
+	yellow: "#facc15",
 };
 
 const PLAYER_COLOR_BORDER: Record<string, string> = {
@@ -1351,6 +1394,37 @@ const soldierAttackCost = computed(() => {
 	return total;
 });
 
+function effectiveGoldForAttack(): number {
+	const gold = myPlayer.value?.gold ?? 0;
+	const isUSA = G.value?.activeCivCard?.[playerID.value!]?.civType === "usa";
+	return gold + (isUSA ? 4 : 0);
+}
+
+const canAffordSoldierAttack = computed(() => {
+	return soldierAttackCost.value !== Infinity && effectiveGoldForAttack() >= soldierAttackCost.value;
+});
+
+function canAffordAttackAtCell(row: number, col: number): boolean {
+	if (!G.value || !playerID.value) return false;
+	const enemies = G.value.pieces.filter(
+		(p) => p.type === "worker" && p.owner !== playerID.value && p.row === row && p.col === col && !p.inAgora,
+	);
+	const enemyCities = G.value.cities.filter(
+		(ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col,
+	);
+	if (enemies.length === 0 && enemyCities.length === 0) return true;
+	const defenderIds = new Set<string>();
+	for (const ew of enemies) defenderIds.add(ew.owner);
+	for (const ec of enemyCities) defenderIds.add(ec.owner);
+	let totalCost = 0;
+	for (const did of defenderIds) {
+		const cost = getAttackCost(G.value, playerID.value, did);
+		if (cost === Infinity) return false;
+		totalCost += cost;
+	}
+	return effectiveGoldForAttack() >= totalCost;
+}
+
 const canFoundCityAtSoldierDest = computed(() => {
 	if (!soldierDest.value || !G.value || !playerID.value) return false;
 	const [r, c] = soldierDest.value;
@@ -1894,11 +1968,20 @@ watch(activePrompt, (newVal) => {
 
         <!-- Soldier attack confirmation -->
         <template v-else-if="activePrompt === 'soldierAttack'">
-          <p class="text-xs md:text-sm text-red-300 font-medium">
-            Attack for {{ soldierAttackCost }} gold?
+          <p class="text-xs md:text-sm font-medium" :class="canAffordSoldierAttack ? 'text-red-300' : 'text-amber-300'">
+            <template v-if="canAffordSoldierAttack">
+              Attack for {{ soldierAttackCost }} gold?
+            </template>
+            <template v-else>
+              Not enough gold (need {{ soldierAttackCost }}, have {{ myPlayer?.gold ?? 0 }})
+            </template>
           </p>
           <button
-            class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
+            class="px-3 md:px-4 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors"
+            :class="canAffordSoldierAttack
+              ? 'bg-red-700 hover:bg-red-600 text-white'
+              : 'bg-slate-700 text-slate-500 cursor-not-allowed'"
+            :disabled="!canAffordSoldierAttack"
             @click="onConfirmAttack(true)"
           >
             Attack
@@ -2740,23 +2823,15 @@ watch(activePrompt, (newVal) => {
             <div
               v-for="(entry, i) in [...gameLogEntries].reverse()"
               :key="`log-${i}-${entry.message}`"
-              class="flex items-center gap-2 py-1 px-2 rounded bg-slate-800/60"
+              class="py-1 px-2 rounded bg-slate-700/50"
+              style="color: #cbd5e1"
             >
-              <div
+              <span
                 v-if="entry.playerColor"
-                class="w-2 h-2 rounded-full shrink-0"
-                :class="PLAYER_COLOR_CLASSES[entry.playerColor]"
-              />
-              <span class="text-slate-300 truncate flex-1 min-w-0">
-                <template v-if="entry.playerColor">
-                  <span
-                    class="capitalize font-medium"
-                    :class="PLAYER_COLOR_TEXT[entry.playerColor]"
-                  >{{ entry.playerColor }}:</span>
-                  {{ entry.message }}
-                </template>
-                <template v-else>{{ entry.message }}</template>
-              </span>
+                class="capitalize font-medium"
+                :style="{ color: PLAYER_COLOR_HEX[entry.playerColor] ?? '#cbd5e1' }"
+              >{{ entry.playerColor }}: </span>
+              <span>{{ entry.message }}</span>
             </div>
           </div>
         </div>
