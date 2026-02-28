@@ -24,10 +24,10 @@ import {
 } from "@tabler/icons-vue";
 
 const props = withDefaults(defineProps<{ headerHeight?: number }>(), { headerHeight: 72 });
-const emit = defineEmits<{ backToLobby: [] }>();
+// const emit = defineEmits<{ backToLobby: [] }>();
 import {
-	gameDef,
-	ERA_TILE_SHAPES,
+  // gameDef, // unused
+  ERA_TILE_SHAPES,
 	ROTATIONS,
 	PLAYER_COLORS,
 	ACTION_TYPES,
@@ -98,9 +98,9 @@ function startingTileBorders(row: number, col: number): string {
 	return classes.join(" ");
 }
 
-function isStartingTileLabel(row: number, col: number): boolean {
-	return isStartingTile(row, col) && !isStartingTile(row - 1, col) && !isStartingTile(row, col - 1);
-}
+// function isStartingTileLabel(row: number, col: number): boolean {
+//     return isStartingTile(row, col) && !isStartingTile(row - 1, col) && !isStartingTile(row, col - 1);
+// }
 
 // ---------------------------------------------------------------------------
 // Player tile border merging
@@ -667,7 +667,8 @@ const playersAtTrackPosition = computed(() => {
 	for (const p of Object.values(G.value.players)) {
 		const pos = (p.score ?? 0) % TRACK_CELLS;
 		if (!map.has(pos)) map.set(pos, []);
-		map.get(pos)!.push(p.color);
+    const arr = map.get(pos);
+    if (arr) arr.push(p.color);
 	}
 	return map;
 });
@@ -685,8 +686,8 @@ const playersInRevealOrder = computed(() => {
 	if (!G.value?.players) return [];
 	const order = Object.keys(G.value.players).sort();
 	return order.map((pid) => {
-		const cityCount = G.value!.cities.filter((c) => c.owner === pid).length;
-		return { playerId: pid, score: G.value!.players[pid].score, cities: cityCount };
+    const cityCount = G.value?.cities.filter((c) => c.owner === pid).length ?? 0;
+    return { playerId: pid, score: G.value?.players?.[pid]?.score ?? 0, cities: cityCount };
 	});
 });
 const revealedScoresCount = ref(0);
@@ -784,12 +785,12 @@ const PLAYER_COLOR_BORDER: Record<string, string> = {
 	yellow: "border-yellow-500",
 };
 
-const PLAYER_COLOR_BG_LIGHT: Record<string, string> = {
-	red: "bg-red-900/50 border-red-600/60",
-	blue: "bg-blue-900/50 border-blue-600/60",
-	green: "bg-green-900/50 border-green-600/60",
-	yellow: "bg-yellow-900/50 border-yellow-600/60",
-};
+// const PLAYER_COLOR_BG_LIGHT: Record<string, string> = {
+//     red: "bg-red-900/50 border-red-600/60",
+//     blue: "bg-blue-900/50 border-blue-600/60",
+//     green: "bg-green-900/50 border-green-600/60",
+//     yellow: "bg-yellow-900/50 border-yellow-600/60",
+// };
 
 // ---------------------------------------------------------------------------
 // Player board switching
@@ -893,14 +894,14 @@ function isActionAvailable(actionType: ActionType): boolean {
 		if (!hasAvailableWorkers.value && !canBuilderWorkerless.value) return false;
 		if (!myPlayer.value) return false;
 		const slots = getUnlockedBuildingSlots(myPlayer.value);
-		return slots.some((unlocked, i) => unlocked && myPlayer.value!.builtBuildings[i] === null) && availableBuildings.value.length > 0;
+    return slots.some((unlocked, i) => unlocked && myPlayer.value?.builtBuildings?.[i] === null) && availableBuildings.value.length > 0;
 	}
 	if (actionType === "buildWonder") {
 		if (!myPlayer.value || availableWonders.value.length === 0) return false;
 		const p = myPlayer.value;
-		const isGreece = G.value?.activeCivCard[playerID.value!]?.civType === "greece";
+    const isGreece = G.value?.activeCivCard?.[playerID.value]?.civType === "greece";
 		if (isGreece && !p.usedGreeceWonder) return true;
-		const activeCiv = G.value?.activeCivCard[playerID.value!]?.civType;
+    const activeCiv = G.value?.activeCivCard?.[playerID.value]?.civType;
 		return availableWonders.value.some((w) => {
 			let cost = w.wonderCost ?? 0;
 			if (activeCiv && activeCiv === w.wonderDiscountCiv) cost = w.wonderDiscountCost ?? cost;
@@ -939,13 +940,6 @@ const isGoldenAgeOnlyOption = computed(
 );
 const goldenAgeOnlyPromptDismissed = ref(false);
 
-// Move currentPlayerId and related computed properties above watch
-
-
-
-watch(currentPlayerId, () => {
-	goldenAgeOnlyPromptDismissed.value = false;
-});
 function dismissGoldenAgeOnlyPrompt() {
 	goldenAgeOnlyPromptDismissed.value = true;
 	confirmGoldenAge.value = true;
@@ -984,10 +978,14 @@ const currentPlayerId = computed(() => {
 	return (state.value as unknown as { ctx?: { currentPlayer?: string } })?.ctx?.currentPlayer ?? null;
 });
 
-const currentPlayerColor = computed(() => {
-	if (!G.value?.players || !currentPlayerId.value) return null;
-	return G.value.players[currentPlayerId.value]?.color ?? null;
+watch(currentPlayerId, () => {
+	goldenAgeOnlyPromptDismissed.value = false;
 });
+
+// const currentPlayerColor = computed(() => {
+//     if (!G.value?.players || !currentPlayerId.value) return null;
+//     return G.value.players[currentPlayerId.value]?.color ?? null;
+// });
 
 const isViewedPlayersTurn = computed(() => {
 	return currentPlayerId.value === viewedPlayerId.value;
@@ -995,11 +993,11 @@ const isViewedPlayersTurn = computed(() => {
 
 const myPassedThisEra = computed(() => myPlayer.value?.passedThisEra ?? false);
 
-const PHASE_LABELS: Record<GamePhase, string> = {
-	eraStart: "Era Start",
-	tilePlacement: "Tile Placement",
-	actions: "Actions",
-};
+// const PHASE_LABELS: Record<GamePhase, string> = {
+//     eraStart: "Era Start",
+//     tilePlacement: "Tile Placement",
+//     actions: "Actions",
+// };
 
 const isFirstGoldenAge = computed(() => {
 	if (!G.value?.players) return false;
@@ -1223,10 +1221,10 @@ const explorerPhase = ref<"selectWorker" | "selectDest" | "confirmCity" | null>(
 const selectedWorkerId = ref<string | null>(null);
 const explorerDest = ref<[number, number] | null>(null);
 
-const myNonExhaustedWorkers = computed(() => {
-	if (!G.value || !playerID.value) return [];
-	return G.value.pieces.filter((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted);
-});
+// const myNonExhaustedWorkers = computed(() => {
+//     if (!G.value || !playerID.value) return [];
+//     return G.value.pieces.filter((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted);
+// });
 
 const selectedWorker = computed(() => {
 	if (!selectedWorkerId.value || !G.value) return null;
@@ -2124,25 +2122,27 @@ watch(activePrompt, (newVal) => {
             </template>
             <template v-if="previewTileResources.has(`${r - 1},${c - 1}`)">
               <template v-if="previewTileResources.get(`${r - 1},${c - 1}`)!.length === 1">
-                <component
-                  :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
-                  :size="20"
-                  :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
-                />
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                  <component
+                    :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
+                    :size="28"
+                    :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
+                  />
+                </div>
               </template>
               <template v-else>
                 <component
                   :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].icon"
-                  :size="16"
+                  :size="22"
                   :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![0]].color"
-                  class="absolute"
+                  class="absolute pointer-events-none select-none"
                   style="top: 15%; left: 15%"
                 />
                 <component
                   :is="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![1]].icon"
-                  :size="16"
+                  :size="22"
                   :class="RESOURCE_ICONS[previewTileResources.get(`${r - 1},${c - 1}`)![1]].color"
-                  class="absolute"
+                  class="absolute pointer-events-none select-none"
                   style="bottom: 15%; right: 15%"
                 />
               </template>
@@ -2623,13 +2623,12 @@ watch(activePrompt, (newVal) => {
             v-for="card in availableWonders"
             :key="card.id"
             class="w-[80px] h-[112px] rounded-lg border-2 text-xs font-medium flex flex-col justify-between p-2 transition-all"
-            :class="[
+            :class="
               (selectingWonder || canDoAction('buildWonder')) && canAffordWonder(card)
                 ? 'bg-purple-900/60 border-purple-400 ring-2 ring-purple-400/50 cursor-pointer hover:ring-purple-300'
                 : hasWonderDiscount(card) || isGreeceFreeAvailable
                   ? 'bg-purple-900/60 border-amber-500/70 ring-1 ring-amber-400/30'
-                  : 'bg-purple-900/60 border-purple-500',
-            ]"
+                  : 'bg-purple-900/60 border-purple-500'"
             :title="card.description"
             @click="onClickWonderCard(card.id)"
           >
