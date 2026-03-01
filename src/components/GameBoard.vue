@@ -2220,6 +2220,15 @@ const activePrompt = computed((): PromptType | null => {
 watch(activePrompt, (newVal) => {
 	if (newVal) window.scrollTo({ top: 0, behavior: "smooth" });
 });
+
+// Glory token just drawn — show reveal animation for current player only
+const showGloryReveal = computed(
+	() =>
+		!!playerID &&
+		!!G.value?.lastGloryDraw &&
+		G.value.lastGloryDraw.playerId === playerID,
+);
+const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 </script>
 
 <template>
@@ -2521,6 +2530,33 @@ watch(activePrompt, (newVal) => {
 				</template>
 			</div>
 		</div>
+	</Teleport>
+
+	<!-- Glory token reveal overlay (current player only) -->
+	<Teleport to="body">
+		<Transition name="glory-reveal">
+			<div
+				v-if="showGloryReveal"
+				class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+				@click.self="move('acknowledgeGloryDraw')"
+			>
+				<div class="glory-reveal-card flex flex-col items-center gap-6 p-8 rounded-2xl bg-gradient-to-b from-amber-900/95 to-amber-950/95 border-2 border-amber-500/60 shadow-2xl shadow-amber-900/50">
+					<p class="text-amber-200/90 text-sm font-medium uppercase tracking-wider">
+						Glory token drawn
+					</p>
+					<div class="glory-token-badge flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-700 text-amber-950 font-bold text-3xl shadow-inner ring-4 ring-amber-300/50">
+						{{ lastGloryDrawVp }} VP
+					</div>
+					<button
+						type="button"
+						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
+						@click="move('acknowledgeGloryDraw')"
+					>
+						Continue
+					</button>
+				</div>
+			</div>
+		</Transition>
 	</Teleport>
 
 	<!-- Spacer to push content below the fixed prompt banner -->
@@ -4302,5 +4338,43 @@ watch(activePrompt, (newVal) => {
 .log-slide-enter-from,
 .log-slide-leave-to {
 	transform: translateX(-100%);
+}
+
+/* Glory token reveal overlay */
+.glory-reveal-enter-active {
+	transition: opacity 0.3s ease;
+}
+.glory-reveal-leave-active {
+	transition: opacity 0.2s ease;
+}
+.glory-reveal-enter-from,
+.glory-reveal-leave-to {
+	opacity: 0;
+}
+.glory-reveal-enter-active .glory-reveal-card {
+	animation: glory-card-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.glory-reveal-enter-active .glory-token-badge {
+	animation: glory-badge-pop 0.5s 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes glory-card-in {
+	from {
+		opacity: 0;
+		transform: scale(0.85);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+@keyframes glory-badge-pop {
+	from {
+		opacity: 0;
+		transform: scale(0.3);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
 }
 </style>
