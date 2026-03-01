@@ -2294,10 +2294,10 @@ watch(activePrompt, (newVal) => {
 			:style="{ top: props.headerHeight + 'px' }"
 		>
 			<div class="max-w-5xl mx-auto px-3 md:px-6 py-2 md:py-3 flex flex-wrap items-center justify-center gap-2 md:gap-4">
-				<!-- Capital relocation -->
+				<!-- Capital relocation (your capital only; opponent pieces on covered cells are returned automatically) -->
 				<template v-if="activePrompt === 'capitalMove'">
 					<p class="text-xs md:text-sm text-slate-200 font-medium">
-						Move your capital and workers to the new tile?
+						Relocate your capital to this tile? (Workers at your capital move with it.)
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
