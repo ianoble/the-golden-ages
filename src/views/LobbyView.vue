@@ -234,7 +234,18 @@ async function createMatch() {
 			}),
 		});
 		if (createRes.status === 403) throw new Error("Authentication required to create games");
-		if (!createRes.ok) throw new Error("Server rejected match creation");
+		if (!createRes.ok) {
+			const body = await createRes.text();
+			let msg = "Server rejected match creation";
+			try {
+				const err = body ? JSON.parse(body) : null;
+				if (err?.error) msg = err.error;
+				else if (err?.message) msg = err.message;
+			} catch {
+				if (body) msg = body;
+			}
+			throw new Error(msg);
+		}
 		const { matchID } = (await createRes.json()) as { matchID: string };
 
 		const joinRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/${matchID}/join`, {
