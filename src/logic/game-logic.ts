@@ -1064,15 +1064,17 @@ function hasAdjacentTile(
 	anchorCol: number,
 	rotation: TileRotation,
 ): boolean {
+	if (!shape?.offsets?.length) return false;
 	const offsets = rotateTileOffsets(shape.offsets, rotation);
 	const tileCells = new Set(offsets.map(([dr, dc]) => getCellKey(anchorRow + dr, anchorCol + dc)));
+	const occupancy = layer?.occupancy ?? {};
 
 	for (const [dr, dc] of offsets) {
 		const r = anchorRow + dr;
 		const c = anchorCol + dc;
 		for (const [nr, nc] of EDGE_NEIGHBORS) {
 			const neighborKey = getCellKey(r + nr, c + nc);
-			if (!tileCells.has(neighborKey) && layer.occupancy[neighborKey] !== undefined) {
+			if (!tileCells.has(neighborKey) && occupancy[neighborKey] !== undefined) {
 				return true;
 			}
 		}
@@ -1130,9 +1132,10 @@ export function canPlaceGameTile(
 	boardEdges?: Record<string, CellEdges>,
 	tileEdges?: CellEdges[],
 ): boolean {
+	if (!layer?.occupancy || !board) return false;
 	if (!canPlaceTile(layer, board, shape, anchorRow, anchorCol, rotation)) return false;
 	if (!hasAdjacentTile(layer, shape, anchorRow, anchorCol, rotation)) return false;
-	if (boardEdges && tileEdges) {
+	if (boardEdges && tileEdges?.length) {
 		if (!edgesMatch(layer, boardEdges, shape, tileEdges, anchorRow, anchorCol, rotation)) return false;
 	}
 	return true;
@@ -1617,11 +1620,11 @@ export function getPlayerRankings(G: GoldenAgesState): { playerId: string; score
 }
 
 function hasWonder(player: GoldenAgesPlayerState, wonderType: string): boolean {
-	return player.builtWonders.some((w) => w.wonderType === wonderType);
+	return (player.builtWonders ?? []).some((w) => w.wonderType === wonderType);
 }
 
 function hasProgress(player: GoldenAgesPlayerState, type: string): boolean {
-	return player.progressCards.some((c) => c.type === type);
+	return (player.progressCards ?? []).some((c) => c.type === type);
 }
 
 function hasGovernment(player: GoldenAgesPlayerState, type: string): boolean {
@@ -1764,8 +1767,10 @@ function checkEraEnd(G: GoldenAgesState): void {
 
 function tryTakeControl(G: GoldenAgesState, playerId: string, row: number, col: number): void {
 	const key = `${row},${col}`;
+	if (!G.boardResources) return;
 	const resources = G.boardResources[key];
 	if (!resources || resources.length === 0) return;
+	if (!G.controlledResources) G.controlledResources = {};
 	if (G.controlledResources[key] === playerId) return;
 
 	G.controlledResources[key] = playerId;
@@ -2171,6 +2176,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 			const rotated = rotateTileOffsets(shape.offsets, rotation);
 
+			if (!G.boardEdges) G.boardEdges = {};
 			if (tileEdges) {
 				for (let idx = 0; idx < rotated.length; idx++) {
 					const key = `${anchorRow + rotated[idx][0]},${anchorCol + rotated[idx][1]}`;
@@ -2186,6 +2192,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const cornerRow = anchorRow + cornerOffset[0];
 				const cornerCol = anchorCol + cornerOffset[1];
 
+				if (!G.pieces) G.pieces = [];
 				G.pieces.push({
 					id: `capital-${ctx.currentPlayer}`,
 					type: 'capital',
@@ -2206,6 +2213,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				const player = G.players[ctx.currentPlayer];
 				if (player?.assignedLTile) {
+					if (!G.boardResources) G.boardResources = {};
 					for (let idx = 0; idx < rotated.length; idx++) {
 						const cellRow = anchorRow + rotated[idx][0];
 						const cellCol = anchorCol + rotated[idx][1];
@@ -2229,6 +2237,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const player = G.players[ctx.currentPlayer];
 				const dominoTile = player?.assignedDominoTiles?.[G.currentEra];
 				if (dominoTile) {
+					if (!G.boardResources) G.boardResources = {};
 					for (let idx = 0; idx < rotated.length; idx++) {
 						const cellRow = anchorRow + rotated[idx][0];
 						const cellCol = anchorCol + rotated[idx][1];
