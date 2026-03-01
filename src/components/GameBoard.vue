@@ -42,6 +42,9 @@ import {
 	INVASION_COSTS,
 	getPlayerRankings,
 	WONDER_DEFS,
+	CULTURE_GRID_ROWS,
+	CULTURE_GRID_COLS,
+	checkCultureRequirement,
 	type GoldenAgesState,
 	type CellEdges,
 	type BoardPiece,
@@ -201,6 +204,15 @@ const cellToAnchor = computed<Map<string, [number, number]>>(() => {
 const pendingPlacement = ref<{ anchor: [number, number]; rotation: TileRotation } | null>(null);
 
 function onCellClick(row: number, col: number) {
+	// Spread cult: click valid destination after choosing card + token
+	if (pendingCultSpread.value && isMyTurn.value && spreadCultCardIndex.value !== null && spreadCultTokenType.value !== null) {
+		const key = `${row},${col}`;
+		if (validSpreadDestinations.value.has(key)) {
+			onSpreadCultDestination(row, col);
+		}
+		return;
+	}
+
 	if (activatingFactory.value !== null) {
 		const workers = piecesAt(row, col).filter((p) => p.type === "worker" && p.owner === playerID.value && p.exhausted && !p.inAgora);
 		if (workers.length > 0) {
@@ -455,6 +467,7 @@ const ACTION_ICONS: Record<ActionType, typeof IconCompass> = {
 	builder: IconHammer,
 	artist: IconPalette,
 	soldier: IconSword,
+	culture: IconLaurelWreath,
 	buildWonder: IconBuildingCastle,
 	activateBuildingOrWonder: IconBolt,
 	developTechnology: IconFlask,
@@ -491,6 +504,7 @@ const PIECE_COLOR_CLASSES: Record<PlayerColor, string> = {
 	blue: "text-blue-300",
 	green: "text-green-300",
 	yellow: "text-yellow-200",
+	black: "fill-black stroke-slate-200",
 };
 
 const PIECE_FILL_CLASSES: Record<PlayerColor, string> = {
@@ -498,6 +512,7 @@ const PIECE_FILL_CLASSES: Record<PlayerColor, string> = {
 	blue: "fill-blue-400",
 	green: "fill-green-400",
 	yellow: "fill-yellow-300",
+	black: "fill-black",
 };
 
 const PIECE_STROKE_CLASSES: Record<PlayerColor, string> = {
@@ -505,6 +520,7 @@ const PIECE_STROKE_CLASSES: Record<PlayerColor, string> = {
 	blue: "text-blue-600",
 	green: "text-green-600",
 	yellow: "text-yellow-600",
+	black: "stroke-slate-200",
 };
 
 const CUBE_BG_CLASSES: Record<PlayerColor, string> = {
@@ -512,6 +528,7 @@ const CUBE_BG_CLASSES: Record<PlayerColor, string> = {
 	blue: "bg-blue-400",
 	green: "bg-green-400",
 	yellow: "bg-yellow-300",
+	black: "bg-slate-500",
 };
 
 // ---------------------------------------------------------------------------
@@ -554,6 +571,17 @@ function cellHasPointer(row: number, col: number): boolean {
 
 function cellClasses(row: number, col: number): string {
 	const key = `${row},${col}`;
+
+	// Spread cult: highlight valid destinations
+	if (
+		pendingCultSpread.value &&
+		isMyTurn.value &&
+		spreadCultCardIndex.value !== null &&
+		spreadCultTokenType.value !== null &&
+		validSpreadDestinations.value.has(key)
+	) {
+		return "bg-amber-500/25 border-2 border-amber-400/60 hover:bg-amber-500/40 cursor-pointer";
+	}
 
 	// Soldier destination highlight
 	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key)) {
@@ -636,6 +664,7 @@ const PLAYER_TILE_BG: Record<PlayerColor, string> = {
 	blue: "bg-blue-800/60",
 	green: "bg-green-800/60",
 	yellow: "bg-yellow-700/50",
+	black: "bg-slate-800/80",
 };
 
 const PLAYER_TILE_BORDER: Record<PlayerColor, string> = {
@@ -643,6 +672,7 @@ const PLAYER_TILE_BORDER: Record<PlayerColor, string> = {
 	blue: "border-blue-600/50",
 	green: "border-green-600/50",
 	yellow: "border-yellow-500/50",
+	black: "border-slate-500/60",
 };
 
 // ---------------------------------------------------------------------------
@@ -795,6 +825,7 @@ const PLAYER_COLOR_CLASSES: Record<string, string> = {
 	blue: "bg-blue-600",
 	green: "bg-green-600",
 	yellow: "bg-yellow-500",
+	black: "bg-slate-600",
 };
 
 const PLAYER_COLOR_TEXT: Record<string, string> = {
@@ -802,6 +833,7 @@ const PLAYER_COLOR_TEXT: Record<string, string> = {
 	blue: "text-blue-400",
 	green: "text-green-400",
 	yellow: "text-yellow-400",
+	black: "text-slate-300",
 };
 
 const PLAYER_COLOR_HEX: Record<string, string> = {
@@ -809,6 +841,7 @@ const PLAYER_COLOR_HEX: Record<string, string> = {
 	blue: "#60a5fa",
 	green: "#4ade80",
 	yellow: "#facc15",
+	black: "#64748b",
 };
 
 const PLAYER_COLOR_BORDER: Record<string, string> = {
@@ -816,6 +849,7 @@ const PLAYER_COLOR_BORDER: Record<string, string> = {
 	blue: "border-blue-600",
 	green: "border-green-600",
 	yellow: "border-yellow-500",
+	black: "border-slate-500",
 };
 
 // const PLAYER_COLOR_BG_LIGHT: Record<string, string> = {
@@ -838,6 +872,17 @@ const viewedPlayerId = computed(() => playerIds.value[viewedPlayerIndex.value] ?
 const viewedPlayer = computed(() => {
 	if (!G.value?.players) return null;
 	return G.value.players[viewedPlayerId.value] ?? null;
+});
+
+const hasViewedPlayerExpansionCards = computed(() => {
+	const p = viewedPlayer.value;
+	if (!p || !cultureBoard.value) return false;
+	return (
+		(p.progressCards?.length ?? 0) > 0 ||
+		p.governmentCard != null ||
+		(p.cultCards?.length ?? 0) > 0 ||
+		(p.masterpieceCards?.length ?? 0) > 0
+	);
 });
 
 const viewedResourceCounts = computed((): Record<ResourceType, number> => {
@@ -941,6 +986,11 @@ function isActionAvailable(actionType: ActionType): boolean {
 			return p.gold >= cost;
 		});
 	}
+	if (actionType === "culture") {
+		if (!cultureBoard.value) return false;
+		if (pendingCulturePicks.value || pendingCultFill.value || pendingCultSpread.value) return false;
+		return cultureRowIndicesAdvanceable.value.length > 0;
+	}
 	if (actionType === "developTechnology") return canResearchAnyTech.value;
 	if (actionType === "activateBuildingOrWonder") return hasActivatableBuilding.value;
 	if (actionType === "startGoldenAge") return !hasAvailableWorkers.value;
@@ -959,6 +1009,7 @@ function canDoAction(actionType: ActionType): boolean {
 		!isAgoraActive.value &&
 		!isActivating.value &&
 		!selectingWonder.value &&
+		!cultureActionMode.value &&
 		isActionAvailable(actionType)
 	);
 }
@@ -1081,6 +1132,10 @@ function onAction(actionType: ActionType) {
 	}
 	if (actionType === "activateBuildingOrWonder") {
 		onStartActivate();
+		return;
+	}
+	if (actionType === "culture") {
+		cultureActionMode.value = true;
 		return;
 	}
 	move("performAction", actionType);
@@ -1506,6 +1561,9 @@ const agoraAction = ref<"builder" | "artist" | null>(null);
 const agoraWorkerId = ref<string | null>(null);
 const pendingBuildingCardId = ref<string | null>(null);
 
+// Artist (expansion): after selecting worker, choose 3 VP or take a masterpiece
+const artistWorkerIdPending = ref<string | null>(null);
+
 const agoraWorkers = computed(() => {
 	if (!G.value?.pieces) return [];
 	return G.value.pieces.filter((p) => p.inAgora);
@@ -1533,8 +1591,12 @@ function wonderHasActivate(wonder: { era?: string; wonderType?: string }): boole
 
 function onSelectAgoraWorker(piece: BoardPiece) {
 	if (agoraAction.value === "artist") {
-		move("performAction", "artist", piece.id);
-		resetAgora();
+		if (cultureBoard.value?.masterpieceDeck?.length) {
+			artistWorkerIdPending.value = piece.id;
+		} else {
+			move("performAction", "artist", piece.id);
+			resetAgora();
+		}
 	} else if (agoraAction.value === "builder") {
 		if (pendingBuildingCardId.value) {
 			move("performAction", "builder", piece.id, pendingBuildingCardId.value);
@@ -1569,6 +1631,23 @@ function resetAgora() {
 	agoraAction.value = null;
 	agoraWorkerId.value = null;
 	pendingBuildingCardId.value = null;
+	artistWorkerIdPending.value = null;
+}
+
+function onArtistChooseVP() {
+	const wid = artistWorkerIdPending.value;
+	if (!wid) return;
+	move("performAction", "artist", wid);
+	artistWorkerIdPending.value = null;
+	resetAgora();
+}
+
+function onArtistChooseMasterpiece(masterpieceIndex: number) {
+	const wid = artistWorkerIdPending.value;
+	if (wid == null) return;
+	move("performAction", "artist", wid, masterpieceIndex);
+	artistWorkerIdPending.value = null;
+	resetAgora();
 }
 
 const isAgoraActive = computed(() => agoraAction.value !== null);
@@ -1832,6 +1911,242 @@ const isWonderSelecting = computed(() => selectingWonder.value);
 
 const availableWonders = computed(() => G.value?.availableWonders ?? []);
 const availableBuildings = computed(() => G.value?.availableBuildings ?? []);
+
+// Culture Board (Cults & Culture expansion)
+const cultureBoard = computed(() => G.value?.cultureBoard ?? null);
+const cultureDisplay = computed(() => cultureBoard.value?.cultureDisplay ?? []);
+
+/** Culture card visual style by subtype: progress=brown, cult=green, government=blue, masterpiece=pink, building=orange (like regular building cards, vertical) */
+const CULTURE_CARD_STYLES: Record<string, { card: string; label: string; horizontal: boolean }> = {
+	progress: { card: 'border-amber-700/80 bg-amber-900/50 text-amber-100', label: 'text-amber-500/90', horizontal: true },
+	cult: { card: 'border-emerald-700/80 bg-emerald-900/50 text-emerald-100', label: 'text-emerald-400/90', horizontal: true },
+	government: { card: 'border-blue-700/80 bg-blue-900/50 text-blue-100', label: 'text-blue-400/90', horizontal: true },
+	masterpiece: { card: 'border-pink-700/80 bg-pink-900/50 text-pink-100', label: 'text-pink-400/90', horizontal: true },
+	building: { card: 'border-orange-500/80 bg-orange-900/60 text-orange-200', label: 'text-orange-400/80', horizontal: false },
+};
+function cultureCardStyle(subtype: string | undefined) {
+	return CULTURE_CARD_STYLES[subtype ?? ''] ?? CULTURE_CARD_STYLES.building;
+}
+const cultureGrid = computed(() => cultureBoard.value?.grid ?? []);
+const cultureTokenPositions = computed(() => cultureBoard.value?.tokenPositions ?? {});
+const pendingCulturePicks = computed(() => (G.value?.pendingCulturePicks ?? 0) > 0);
+const pendingCultFill = computed(() => G.value?.pendingCultFill ?? null);
+const pendingCultSpread = computed(() => G.value?.pendingCultSpread ?? null);
+const myCultureScore = computed(() => (playerID.value && G.value?.players[playerID.value] ? G.value.players[playerID.value].cultureScore : 0));
+const cultureScoreTrack = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+function cultureScoreToTrackIndex(score: number): number {
+	if (score <= 0) return -1;
+	if (score > 15) return 14;
+	return score - 1;
+}
+function playersAtCultureTrackIndex(trackIdx: number): string[] {
+	const out: string[] = [];
+	if (!G.value?.players) return out;
+	for (const [pid, p] of Object.entries(G.value.players)) {
+		if (p && cultureScoreToTrackIndex(p.cultureScore) === trackIdx) out.push(pid);
+	}
+	return out;
+}
+function cultureRequirementLabel(req: string | null): string {
+	if (!req) return "Start";
+	if (req.startsWith("tech_lvl_")) return `Tech ${req.slice(9)}`;
+	if (req.startsWith("glory_")) return `${req.slice(6)} Glory`;
+	if (req.startsWith("cubes_")) return `${req.slice(6)} Cubes`;
+	if (req.startsWith("wonders_")) return `${req.slice(8)} Wonder(s)`;
+	if (req.startsWith("gold_")) return `${req.slice(5)}g`;
+	return req;
+}
+function playersInCultureCell(row: number, col: number): string[] {
+	const out: string[] = [];
+	for (const [pid, positions] of Object.entries(cultureTokenPositions.value)) {
+		if (positions[row] === col) out.push(pid);
+	}
+	return out;
+}
+function canAdvanceToCultureCell(row: number, col: number): boolean {
+	if (!G.value || !playerID.value || !cultureBoard.value) return false;
+	const player = G.value.players[playerID.value];
+	if (!player) return false;
+	const cell = cultureGrid.value[row]?.[col];
+	if (!cell) return false;
+	return checkCultureRequirement(cell.requirement, player, G.value, playerID.value);
+}
+function canAdvanceOnCultureRow(rowIndex: number): boolean {
+	const pos = cultureTokenPositions.value[playerID.value!]?.[rowIndex] ?? 0;
+	const nextCol = pos + 1;
+	if (nextCol >= CULTURE_GRID_COLS) return false;
+	return canAdvanceToCultureCell(rowIndex, nextCol);
+}
+const cultureRowIndicesAdvanceable = computed(() => {
+	const out: number[] = [];
+	for (let r = 0; r < CULTURE_GRID_ROWS; r++) {
+		if (canAdvanceOnCultureRow(r)) out.push(r);
+	}
+	return out;
+});
+const cultureActionMode = ref(false);
+function onCultureRowSelect(rowIndex: number) {
+	move("performAction", "culture", rowIndex);
+	cultureActionMode.value = false;
+}
+function cancelCultureAction() {
+	cultureActionMode.value = false;
+}
+function onPickCultureCard(index: number) {
+	move("pickCultureCard", index);
+}
+function onSkipCultSpread() {
+	move("skipCultSpread");
+}
+
+// Fill cult: card being filled and spots count
+const cultCardToFill = computed(() => {
+	const pf = pendingCultFill.value;
+	if (!pf || !playerID.value || !G.value?.players[playerID.value]) return null;
+	const player = G.value.players[playerID.value];
+	const cultCard = player.cultCards[pf.cardIndex];
+	if (!cultCard?.card) return null;
+	const spots = cultCard.card.cultSpots ?? 0;
+	return { card: cultCard.card, spots, cardIndex: pf.cardIndex };
+});
+const fillCultChoices = ref<number[]>([]);
+watch(pendingCultFill, (pf) => {
+	if (pf && G.value?.players[playerID.value ?? ""]) {
+		const player = G.value.players[playerID.value!];
+		const cultCard = player?.cultCards[pf.cardIndex];
+		const spots = cultCard?.card?.cultSpots ?? 0;
+		fillCultChoices.value = Array(spots).fill(-1);
+	} else {
+		fillCultChoices.value = [];
+	}
+}, { immediate: true });
+const canSubmitFillCult = computed(() => {
+	const c = cultCardToFill.value;
+	if (!c || fillCultChoices.value.length !== c.spots) return false;
+	return fillCultChoices.value.every((t) => t >= 0 && t <= 5);
+});
+function setFillCultChoice(spotIndex: number, tokenType: number) {
+	if (spotIndex >= 0 && spotIndex < fillCultChoices.value.length) {
+		const next = [...fillCultChoices.value];
+		next[spotIndex] = tokenType;
+		fillCultChoices.value = next;
+	}
+}
+function onSubmitFillCult() {
+	if (!canSubmitFillCult.value) return;
+	move("fillCultCard", [...fillCultChoices.value]);
+	fillCultChoices.value = [];
+}
+
+// Spread cult: selection state and valid destinations
+const spreadCultCardIndex = ref<number | null>(null);
+const spreadCultTokenType = ref<number | null>(null);
+watch(pendingCultSpread, (ps) => {
+	if (!ps) {
+		spreadCultCardIndex.value = null;
+		spreadCultTokenType.value = null;
+	}
+});
+const myCultCardsWithTokens = computed(() => {
+	if (!playerID.value || !G.value?.players[playerID.value] || !pendingCultSpread.value) return [];
+	const player = G.value.players[playerID.value];
+	return (player.cultCards ?? [])
+		.map((cc, idx) => ({ ...cc, index: idx }))
+		.filter((cc) => cc.tokenTypes && cc.tokenTypes.length > 0);
+});
+const validSpreadDestinations = computed(() => {
+	const ps = pendingCultSpread.value;
+	const cardIdx = spreadCultCardIndex.value;
+	const tokenType = spreadCultTokenType.value;
+	if (!ps || !G.value?.cultureBoard || cardIdx === null || tokenType === null) return new Set<string>();
+	const { cityRow, cityCol, usedDestinations } = ps;
+	const destKey = (r: number, c: number) => `${r},${c}`;
+	const hasCityOrCapital = (r: number, c: number) =>
+		(G.value!.cities ?? []).some((ct) => ct.row === r && ct.col === c) ||
+		(G.value!.pieces ?? []).some((p) => p.type === "capital" && p.row === r && p.col === c);
+	const existing = G.value.cultureBoard.cultTokensOnBoard ?? {};
+	const valid = new Set<string>();
+	for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+		const r = cityRow + dr;
+		const c = cityCol + dc;
+		const key = destKey(r, c);
+		if (usedDestinations.includes(key)) continue;
+		if (!hasCityOrCapital(r, c)) continue;
+		const tokens = existing[key] ?? [];
+		if (tokens.includes(tokenType)) continue;
+		valid.add(key);
+	}
+	return valid;
+});
+function onSpreadCultDestination(row: number, col: number) {
+	const cardIdx = spreadCultCardIndex.value;
+	const tokenType = spreadCultTokenType.value;
+	if (cardIdx === null || tokenType === null || !validSpreadDestinations.value.has(`${row},${col}`)) return;
+	move("spreadCultToken", cardIdx, tokenType, row, col);
+	spreadCultCardIndex.value = null;
+	spreadCultTokenType.value = null;
+}
+function onSelectSpreadCultChoice(cardIndex: number, tokenType: number) {
+	spreadCultCardIndex.value = cardIndex;
+	spreadCultTokenType.value = tokenType;
+}
+
+// Place culture building: from hand onto empty slot
+const placeCultureBuildingMode = ref(false);
+const placeCultureBuildingSlot = ref<number | null>(null);
+const placeCultureBuildingHandIdx = ref<number | null>(null);
+const cultureBuildingHandEntries = computed(() => {
+	const player = myPlayer.value;
+	if (!player?.hand) return [];
+	return player.hand
+		.map((card, handIndex) => ({ card, handIndex }))
+		.filter(({ card }) => card.cultureSubtype === "building");
+});
+const emptyCultureBuildingSlotIndices = computed(() => {
+	const player = myPlayer.value;
+	if (!player) return [];
+	const slots = getUnlockedBuildingSlots(player);
+	const out: number[] = [];
+	for (let i = 0; i < 3; i++) {
+		if (slots[i] && player.builtBuildings[i] === null) out.push(i);
+	}
+	return out;
+});
+const canPlaceCultureBuilding = computed(
+	() =>
+		!!cultureBoard.value &&
+		isMyTurn.value &&
+		!pendingCulturePicks.value &&
+		!pendingCultFill.value &&
+		!pendingCultSpread.value &&
+		cultureBuildingHandEntries.value.length > 0 &&
+		emptyCultureBuildingSlotIndices.value.length > 0
+);
+const canConfirmPlaceCultureBuilding = computed(
+	() =>
+		placeCultureBuildingSlot.value !== null &&
+		placeCultureBuildingHandIdx.value !== null
+);
+function onPlaceCultureBuildingSlot(slotIndex: number) {
+	placeCultureBuildingSlot.value = slotIndex;
+}
+function onPlaceCultureBuildingCard(handIndex: number) {
+	placeCultureBuildingHandIdx.value = handIndex;
+}
+function onConfirmPlaceCultureBuilding() {
+	const slot = placeCultureBuildingSlot.value;
+	const handIdx = placeCultureBuildingHandIdx.value;
+	if (slot === null || handIdx === null) return;
+	move("placeCultureBuilding", slot, handIdx);
+	placeCultureBuildingMode.value = false;
+	placeCultureBuildingSlot.value = null;
+	placeCultureBuildingHandIdx.value = null;
+}
+function cancelPlaceCultureBuilding() {
+	placeCultureBuildingMode.value = false;
+	placeCultureBuildingSlot.value = null;
+	placeCultureBuildingHandIdx.value = null;
+}
 
 const myActiveCivCard = computed(() => {
 	if (!G.value?.activeCivCard || !playerID.value) return null;
@@ -2842,6 +3157,185 @@ watch(activePrompt, (newVal) => {
 			</div>
 		</div>
 
+		<!-- Culture Board (expansion) -->
+		<div
+			v-if="cultureBoard"
+			class="w-full max-w-2xl mx-auto bg-teal-900/30 border border-teal-600/50 rounded-xl p-3 md:p-4"
+		>
+			<h3 class="text-sm font-semibold text-teal-200 mb-2 flex items-center gap-2">
+				<IconLaurelWreath :size="18" class="text-teal-400" />
+				Culture Board
+				<span v-if="pendingCulturePicks && isMyTurn" class="text-amber-300 text-xs font-normal">— Pick a culture card</span>
+				<span v-else-if="pendingCultFill && isMyTurn" class="text-amber-300 text-xs font-normal">— Fill cult card</span>
+				<span v-else-if="pendingCultSpread && isMyTurn" class="text-amber-300 text-xs font-normal">— Spread cult token or skip</span>
+			</h3>
+
+			<!-- Grid: 5 rows x 4 cols -->
+			<div class="grid gap-px mb-3" :style="{ gridTemplateColumns: `repeat(${CULTURE_GRID_COLS}, minmax(0, 1fr))` }">
+				<div
+					v-for="(cellRow, r) in cultureGrid"
+					:key="`row-${r}`"
+					class="contents"
+				>
+					<div
+						v-for="(cell, c) in cellRow"
+						:key="`${r}-${c}`"
+						class="min-w-[52px] min-h-[36px] rounded border flex flex-col items-center justify-center p-1 text-[10px]"
+						:class="
+							cell.requirement === null
+								? 'bg-slate-700/50 border-slate-600 text-slate-400'
+								: canAdvanceToCultureCell(r, c)
+									? 'bg-teal-800/60 border-teal-500/60 text-teal-200'
+									: 'bg-slate-800/80 border-slate-600/80 text-slate-500'
+						"
+					>
+						<span class="font-medium">{{ cultureRequirementLabel(cell.requirement) }}</span>
+						<div class="flex flex-wrap justify-center gap-0.5 mt-0.5">
+							<span
+								v-for="pid in playersInCultureCell(r, c)"
+								:key="pid"
+								class="w-2.5 h-2.5 rounded-full border border-white/30"
+								:class="PLAYER_COLOR_CLASSES[G?.players[pid]?.color ?? 'red']"
+								:title="`Player ${parseInt(pid, 10) + 1}`"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Score track: 1–15, full width -->
+			<div class="w-full mb-3">
+				<span class="text-[10px] text-slate-500 block mb-1">Score:</span>
+				<div
+					class="grid gap-px w-full"
+					:style="{ gridTemplateColumns: `repeat(${cultureScoreTrack.length}, minmax(0, 1fr))` }"
+				>
+					<div
+						v-for="(val, idx) in cultureScoreTrack"
+						:key="idx"
+						class="min-w-0 rounded border flex flex-col items-center justify-center py-1 text-[10px] font-medium bg-slate-800/80 border-slate-600 relative"
+					>
+						<span>{{ val }}</span>
+						<div v-if="playersAtCultureTrackIndex(idx).length" class="flex flex-wrap justify-center gap-px mt-0.5">
+							<span
+								v-for="pid in playersAtCultureTrackIndex(idx)"
+								:key="pid"
+								class="w-2 h-2 rounded-full border border-white/30"
+								:class="PLAYER_COLOR_CLASSES[G?.players?.[pid]?.color ?? 'red']"
+								:title="`Player ${parseInt(pid, 10) + 1}`"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Fill cult card: choose token type per spot -->
+			<div
+				v-if="pendingCultFill && isMyTurn && cultCardToFill"
+				class="mb-3 p-3 rounded-lg bg-amber-900/30 border border-amber-600/50"
+			>
+				<p class="text-xs text-amber-200 mb-2">Fill &quot;{{ cultCardToFill.card.name }}&quot; — choose a cult token type (1–6) for each spot:</p>
+				<div class="flex flex-wrap items-center gap-2">
+					<template v-for="spotNum in cultCardToFill.spots" :key="spotNum">
+						<div class="flex flex-col items-center gap-0.5">
+							<span class="text-[10px] text-slate-400">Spot {{ spotNum }}</span>
+							<div class="flex flex-wrap gap-1">
+								<button
+									v-for="t in 6"
+									:key="t"
+									type="button"
+									class="w-8 h-8 rounded border text-xs font-medium transition-colors"
+									:class="
+										fillCultChoices[spotNum - 1] === t - 1
+											? 'bg-amber-500 text-slate-900 border-amber-400'
+											: 'bg-slate-700/80 border-slate-600 text-slate-300 hover:bg-slate-600'
+									"
+									@click="setFillCultChoice(spotNum - 1, t - 1)"
+								>
+									{{ t }}
+								</button>
+							</div>
+						</div>
+					</template>
+				</div>
+				<button
+					type="button"
+					class="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 text-slate-900 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+					:disabled="!canSubmitFillCult"
+					@click="onSubmitFillCult"
+				>
+					Submit
+				</button>
+			</div>
+
+			<!-- Culture card display + pick (horizontal except buildings); only look clickable when picking -->
+			<div class="flex flex-wrap items-stretch gap-2">
+				<div
+					v-for="(card, idx) in cultureDisplay"
+					:key="card.id"
+					class="rounded-lg border-2 text-[10px] flex flex-col justify-between p-1.5 transition-all shrink-0"
+					:class="[
+						cultureCardStyle(card.cultureSubtype).card,
+						cultureCardStyle(card.cultureSubtype).horizontal ? 'min-w-[100px] w-[100px] min-h-[56px]' : 'w-[72px] min-h-[100px]',
+						pendingCulturePicks && isMyTurn ? 'hover:ring-2 hover:ring-amber-400 cursor-pointer' : 'cursor-default',
+					]"
+					:title="card.description ?? card.name"
+					@click="pendingCulturePicks && isMyTurn && onPickCultureCard(idx)"
+				>
+					<div class="font-medium leading-tight line-clamp-2">{{ card.name }}</div>
+					<div class="text-[8px] leading-tight mt-0.5 line-clamp-2 opacity-90">{{ card.description }}</div>
+					<!-- Cult cards: show token spots -->
+					<div v-if="card.cultureSubtype === 'cult' && (card.cultSpots ?? 0) > 0" class="flex flex-wrap gap-0.5 mt-1 justify-center">
+						<span
+							v-for="s in (card.cultSpots ?? 0)"
+							:key="s"
+							class="w-2.5 h-2.5 rounded-full border border-white/40 bg-emerald-800/60"
+							:title="`Cult spot ${s}`"
+						/>
+					</div>
+					<div v-else class="mt-0.5 text-[8px] opacity-80" :class="cultureCardStyle(card.cultureSubtype).label">
+						{{ card.cultureSubtype === 'progress' ? 'Progress' : card.cultureSubtype === 'government' ? 'Government' : card.cultureSubtype === 'masterpiece' ? 'Masterpiece' : card.cultureSubtype === 'building' ? 'Building' : 'Cult' }}
+					</div>
+					<div v-if="pendingCulturePicks && isMyTurn" class="text-amber-300 font-medium text-[8px] mt-1">Click to pick</div>
+				</div>
+			</div>
+
+			<!-- Pending: spread — choose card + token, then click map -->
+			<div v-if="pendingCultSpread && isMyTurn" class="mt-2 space-y-2">
+				<p class="text-xs text-amber-200">Spread a cult token: choose a card and token type, then click an adjacent city/capital on the map.</p>
+				<div class="flex flex-wrap items-center gap-2">
+					<template v-for="cc in myCultCardsWithTokens" :key="cc.index">
+						<div class="flex flex-col gap-1">
+							<span class="text-[10px] text-slate-400">{{ cc.card.name }}</span>
+							<div class="flex flex-wrap gap-1">
+								<button
+									v-for="(t, ti) in (cc.tokenTypes ?? [])"
+									:key="ti"
+									type="button"
+									class="w-7 h-7 rounded border text-[10px] font-medium transition-colors"
+									:class="
+										spreadCultCardIndex === cc.index && spreadCultTokenType === t
+											? 'bg-amber-500 text-slate-900 border-amber-400'
+											: 'bg-slate-700/80 border-slate-600 text-slate-300 hover:bg-slate-600'
+									"
+									@click="onSelectSpreadCultChoice(cc.index, t)"
+								>
+									{{ t + 1 }}
+								</button>
+							</div>
+						</div>
+					</template>
+				</div>
+				<button
+					type="button"
+					class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-700/60 text-amber-200 hover:bg-amber-600/60 transition-colors"
+					@click="onSkipCultSpread"
+				>
+					Skip spread
+				</button>
+			</div>
+		</div>
+
 		<!-- Player Board -->
 		<div
 			v-if="viewedPlayer"
@@ -2971,12 +3465,61 @@ watch(activePrompt, (newVal) => {
 						</button>
 					</span>
 					<span
-						v-if="agoraAction"
-						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
+						v-if="cultureActionMode"
+						class="inline-flex flex-wrap items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-teal-800/40 text-teal-300 font-medium ml-2"
 					>
-						<template v-if="agoraAction === 'builder' && agoraWorkerId"> Select a building card from the display </template>
+						Advance on culture row:
+						<button
+							v-for="r in CULTURE_GRID_ROWS"
+							:key="r"
+							type="button"
+							class="px-1.5 py-0.5 rounded border text-[10px] transition-colors"
+							:class="canAdvanceOnCultureRow(r - 1) ? 'border-teal-500/60 hover:bg-teal-600/40 cursor-pointer' : 'border-slate-600/50 text-slate-500 cursor-not-allowed opacity-60'"
+							:disabled="!canAdvanceOnCultureRow(r - 1)"
+							@click="canAdvanceOnCultureRow(r - 1) && onCultureRowSelect(r - 1)"
+						>
+							Row {{ r }}
+						</button>
+						<button
+							class="text-teal-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							@click="cancelCultureAction"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="agoraAction"
+						class="inline-flex flex-wrap items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-amber-800/40 text-amber-300 font-medium ml-2"
+					>
+						<template v-if="artistWorkerIdPending">
+							Artist: take
+							<button
+								class="px-1.5 py-0.5 rounded bg-amber-600/60 hover:bg-amber-500/60 text-slate-900 font-medium cursor-pointer"
+								@click="onArtistChooseVP"
+							>
+								3 VP
+							</button>
+							or choose a masterpiece:
+							<template v-for="(card, idx) in (cultureBoard?.masterpieceDeck ?? [])" :key="card?.id ?? idx">
+								<button
+									class="px-1.5 py-0.5 rounded border border-amber-400/60 hover:bg-amber-600/40 text-left max-w-[80px] truncate"
+									:title="card?.description ?? card?.name"
+									@click="onArtistChooseMasterpiece(idx)"
+								>
+									{{ card?.name }}
+								</button>
+							</template>
+							<button
+								class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+								@click="artistWorkerIdPending = null; resetAgora()"
+							>
+								&times;
+							</button>
+						</template>
+						<template v-else-if="agoraAction === 'builder' && agoraWorkerId"> Select a building card from the display </template>
 						<template v-else> Select a worker for {{ agoraAction === "artist" ? "Artist" : "Builder" }} </template>
 						<button
+							v-if="!artistWorkerIdPending"
 							class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
 							@click="resetAgora"
 						>
@@ -3022,6 +3565,58 @@ watch(activePrompt, (newVal) => {
 						<button
 							class="text-purple-400 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
 							@click="cancelWonderSelect"
+						>
+							&times;
+						</button>
+					</span>
+					<span
+						v-if="canPlaceCultureBuilding && !placeCultureBuildingMode"
+						class="inline-flex items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-teal-800/40 text-teal-300 font-medium ml-2"
+					>
+						<button
+							class="px-1.5 py-0.5 rounded bg-teal-600/60 hover:bg-teal-500/60 text-slate-900 font-medium cursor-pointer"
+							@click="placeCultureBuildingMode = true"
+						>
+							Place culture building
+						</button>
+					</span>
+					<span
+						v-if="placeCultureBuildingMode"
+						class="inline-flex flex-wrap items-center gap-2 text-[10px] px-2 py-0.5 rounded bg-teal-800/40 text-teal-300 font-medium ml-2"
+					>
+						Place culture building: Slot
+						<button
+							v-for="slotIdx in emptyCultureBuildingSlotIndices"
+							:key="slotIdx"
+							type="button"
+							class="px-1.5 py-0.5 rounded border text-[10px] transition-colors"
+							:class="placeCultureBuildingSlot === slotIdx ? 'bg-teal-500 text-slate-900 border-teal-400' : 'border-teal-500/60 hover:bg-teal-600/40'"
+							@click="onPlaceCultureBuildingSlot(slotIdx)"
+						>
+							{{ slotIdx + 1 }}
+						</button>
+						Card
+						<button
+							v-for="{ card, handIndex } in cultureBuildingHandEntries"
+							:key="handIndex"
+							type="button"
+							class="px-1.5 py-0.5 rounded border text-[10px] max-w-[72px] truncate transition-colors"
+							:class="placeCultureBuildingHandIdx === handIndex ? 'bg-teal-500 text-slate-900 border-teal-400' : 'border-teal-500/60 hover:bg-teal-600/40'"
+							:title="card.description ?? card.name"
+							@click="onPlaceCultureBuildingCard(handIndex)"
+						>
+							{{ card.name }}
+						</button>
+						<button
+							class="px-1.5 py-0.5 rounded bg-teal-600 text-slate-900 font-medium disabled:opacity-50"
+							:disabled="!canConfirmPlaceCultureBuilding"
+							@click="onConfirmPlaceCultureBuilding"
+						>
+							Confirm
+						</button>
+						<button
+							class="text-teal-400 hover:text-red-400 cursor-pointer text-sm leading-none"
+							@click="cancelPlaceCultureBuilding"
 						>
 							&times;
 						</button>
@@ -3298,7 +3893,7 @@ watch(activePrompt, (newVal) => {
 								</div>
 								<div class="grid grid-cols-2 gap-1">
 									<button
-										v-for="action in ACTION_TYPES.slice(4, 8)"
+										v-for="action in ACTION_TYPES.slice(4, 9)"
 										:key="action.type"
 										class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
 										:class="[
@@ -3321,6 +3916,86 @@ watch(activePrompt, (newVal) => {
 							</div>
 						</div>
 					</div>
+				</div>
+
+				<!-- Expansion cards (Cults & Culture): Progress=brown, Government=blue, Cult=green+spots, Masterpiece=pink; all horizontal except buildings -->
+				<div
+					v-if="cultureBoard && hasViewedPlayerExpansionCards"
+					class="mt-2 pt-2 border-t border-slate-700/40 flex flex-wrap gap-2 items-stretch"
+				>
+					<!-- Progress cards (brown, horizontal) -->
+					<template v-if="viewedPlayer?.progressCards?.length">
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Progress</span>
+							<div class="flex flex-wrap gap-1">
+								<div
+									v-for="card in viewedPlayer.progressCards"
+									:key="card.id"
+									class="min-w-[100px] w-[100px] min-h-[56px] rounded border p-1.5 flex flex-col justify-between text-[9px] border-amber-700/80 bg-amber-900/50 text-amber-100"
+									:title="card.description ?? card.name"
+								>
+									<span class="font-medium leading-tight line-clamp-2">{{ card.name }}</span>
+									<span class="text-amber-500/90 text-[8px]">Progress</span>
+								</div>
+							</div>
+						</div>
+					</template>
+					<!-- Government card (blue, horizontal) -->
+					<template v-if="viewedPlayer?.governmentCard">
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Government</span>
+							<div
+								class="min-w-[100px] w-[100px] min-h-[56px] rounded border p-1.5 flex flex-col justify-between text-[9px] border-blue-700/80 bg-blue-900/50 text-blue-100"
+								:title="viewedPlayer.governmentCard?.description ?? viewedPlayer.governmentCard?.name"
+							>
+								<span class="font-medium leading-tight line-clamp-2">{{ viewedPlayer.governmentCard.name }}</span>
+								<span class="text-blue-400/90 text-[8px]">Government</span>
+							</div>
+						</div>
+					</template>
+					<!-- Cult cards (green, horizontal, with token spots) -->
+					<template v-if="viewedPlayer?.cultCards?.length">
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Cults</span>
+							<div class="flex flex-wrap gap-1">
+								<div
+									v-for="(cc, cIdx) in viewedPlayer.cultCards"
+									:key="cc.card?.id ?? cIdx"
+									class="min-w-[100px] w-[100px] min-h-[56px] rounded border border-emerald-700/80 bg-emerald-900/50 text-emerald-100 p-1.5 flex flex-col justify-between text-[9px]"
+									:title="cc.card?.description ?? cc.card?.name"
+								>
+									<span class="font-medium leading-tight line-clamp-2">{{ cc.card?.name }}</span>
+									<!-- Cult token spots: filled = tokenTypes, empty = remaining -->
+									<div class="flex flex-wrap gap-0.5 justify-center mt-0.5">
+										<template v-for="(_, spotIdx) in (cc.card?.cultSpots ?? 0)" :key="spotIdx">
+											<span
+												class="w-2.5 h-2.5 rounded-full border border-white/40 shrink-0"
+												:class="(cc.tokenTypes?.length ?? 0) > spotIdx ? 'bg-emerald-400/90' : 'bg-emerald-800/60'"
+												:title="(cc.tokenTypes?.length ?? 0) > spotIdx ? `Token ${(cc.tokenTypes ?? [])[spotIdx]! + 1}` : 'Empty'"
+											/>
+										</template>
+									</div>
+								</div>
+							</div>
+						</div>
+					</template>
+					<!-- Masterpiece cards (pink, horizontal) -->
+					<template v-if="viewedPlayer?.masterpieceCards?.length">
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Masterpieces</span>
+							<div class="flex flex-wrap gap-1">
+								<div
+									v-for="card in viewedPlayer.masterpieceCards"
+									:key="card.id"
+									class="min-w-[100px] w-[100px] min-h-[56px] rounded border border-pink-700/80 bg-pink-900/50 text-pink-100 p-1.5 flex flex-col justify-between text-[9px]"
+									:title="card.description ?? card.name"
+								>
+									<span class="font-medium leading-tight line-clamp-2">{{ card.name }}</span>
+									<span class="text-pink-400/90 text-[8px]">Masterpiece</span>
+								</div>
+							</div>
+						</div>
+					</template>
 				</div>
 			</div>
 
@@ -3525,7 +4200,7 @@ watch(activePrompt, (newVal) => {
 				</div>
 			</div>
 
-			<!-- Phase 2: final rankings with winner highlight -->
+			<!-- Phase 2: final rankings with score breakdown -->
 			<div
 				v-else
 				class="space-y-3"
@@ -3533,31 +4208,53 @@ watch(activePrompt, (newVal) => {
 				<div
 					v-for="(r, idx) in finalRankings"
 					:key="r.playerId"
-					class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
+					class="rounded-lg transition-all duration-300 overflow-hidden"
 					:class="idx === 0 ? 'bg-amber-900/40 border border-amber-600/40' : 'bg-slate-700/40 border border-slate-600/30'"
 				>
-					<span
-						class="text-lg font-bold w-7 text-center"
-						:class="idx === 0 ? 'text-amber-300' : 'text-slate-400'"
-					>
-						{{ idx === 0 ? '★' : idx + 1 }}
-					</span>
-					<div
-						class="w-4 h-4 rounded-full shrink-0"
-						:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
-					/>
-					<span
-						class="font-medium capitalize flex-1"
-						:class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
-					>
-						{{ G!.players[r.playerId].color }}
-					</span>
-					<div class="text-right">
+					<div class="flex items-center gap-3 p-3">
 						<span
-							class="text-lg font-bold"
-							:class="idx === 0 ? 'text-amber-200' : 'text-slate-200'"
-						> {{ r.score }} VP </span>
-						<span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
+							class="text-lg font-bold w-7 text-center shrink-0"
+							:class="idx === 0 ? 'text-amber-300' : 'text-slate-400'"
+						>
+							{{ idx === 0 ? '★' : idx + 1 }}
+						</span>
+						<div
+							class="w-4 h-4 rounded-full shrink-0"
+							:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
+						/>
+						<span
+							class="font-medium capitalize flex-1"
+							:class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
+						>
+							{{ G!.players[r.playerId].color }}
+						</span>
+						<div class="text-right">
+							<span
+								class="text-lg font-bold"
+								:class="idx === 0 ? 'text-amber-200' : 'text-slate-200'"
+							> {{ r.score }} VP </span>
+							<span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
+						</div>
+					</div>
+					<!-- Score breakdown -->
+					<div
+						v-if="G?.endGameScoreBreakdown?.[r.playerId]?.length"
+						class="px-3 pb-3 pt-0 border-t border-slate-600/30 mt-0"
+					>
+						<div class="text-[10px] text-slate-500 font-medium uppercase tracking-wide mb-1.5 mt-1.5">
+							Score breakdown
+						</div>
+						<div class="space-y-0.5">
+							<div
+								v-for="(item, i) in G.endGameScoreBreakdown[r.playerId]"
+								:key="i"
+								class="flex justify-between text-xs gap-4"
+								:class="idx === 0 ? 'text-amber-200/90' : 'text-slate-300'"
+							>
+								<span class="truncate">{{ item.label }}</span>
+								<span class="tabular-nums shrink-0">{{ item.vp }} VP</span>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>

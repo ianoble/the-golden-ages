@@ -25,7 +25,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-export type PlayerColor = 'red' | 'blue' | 'green' | 'yellow';
+export type PlayerColor = 'red' | 'blue' | 'green' | 'yellow' | 'black';
 
 export type Era = 'I' | 'II' | 'III' | 'IV';
 
@@ -34,9 +34,12 @@ export type CardType =
 	| 'wonder'
 	| 'building'
 	| 'futureTech'
-	| 'historysJudgement';
+	| 'historysJudgement'
+	| 'culture';
 
-export type BackColor = 'green' | 'purple' | 'orange' | 'blue' | 'gray';
+export type BackColor = 'green' | 'purple' | 'orange' | 'blue' | 'gray' | 'teal';
+
+export type CultureCardSubtype = 'progress' | 'cult' | 'government' | 'masterpiece' | 'building';
 
 export type GamePhase = 'eraStart' | 'tilePlacement' | 'actions';
 
@@ -50,6 +53,7 @@ export type ActionType =
 	| 'builder'
 	| 'artist'
 	| 'soldier'
+	| 'culture'
 	| 'buildWonder'
 	| 'activateBuildingOrWonder'
 	| 'developTechnology'
@@ -100,6 +104,7 @@ export const ACTION_TYPES: ActionMeta[] = [
 	{ type: 'builder', label: 'Builder', description: 'Send a worker to build structures', requiresWorker: true },
 	{ type: 'artist', label: 'Artist', description: 'Send a worker to create art', requiresWorker: true },
 	{ type: 'soldier', label: 'Soldier', description: 'Send a worker to wage war', requiresWorker: true },
+	{ type: 'culture', label: 'Culture', description: 'Advance on a culture row and draw a culture card', requiresWorker: false },
 	{ type: 'buildWonder', label: 'Build a Wonder', description: 'Spend resources to build a wonder', requiresWorker: false },
 	{ type: 'activateBuildingOrWonder', label: 'Activate', description: 'Activate a building or wonder ability', requiresWorker: false },
 	{ type: 'developTechnology', label: 'Develop Technology', description: 'Advance your civilisation\'s technology', requiresWorker: false },
@@ -122,6 +127,22 @@ export interface GameCard {
 	wonderDiscountCiv?: string;
 	wonderDiscountCost?: number;
 	description?: string;
+	cultureSubtype?: CultureCardSubtype;
+	cultSpots?: number;
+	cultSpotVP?: number;
+	vp?: number;
+	gold?: number;
+}
+
+export interface CultureCardDef {
+	type: string;
+	name: string;
+	subtype: CultureCardSubtype;
+	description: string;
+	cultSpots?: number;
+	cultSpotVP?: number;
+	vp?: number;
+	gold?: number;
 }
 
 export interface JudgementDef {
@@ -143,6 +164,12 @@ export const JUDGEMENT_DEFS: JudgementDef[] = [
 	{ type: 'mostAdvanced', name: 'Most Advanced', description: '1 VP per developed tech' },
 ];
 
+export const EXPANSION_JUDGEMENT_DEFS: JudgementDef[] = [
+	{ type: 'mostSpiritual', name: 'The Most Spiritual Civ', description: '2 VP per Cult token controlled' },
+	{ type: 'mostCultured', name: 'The Most Cultured Civ', description: '2 VP per Progress card possessed' },
+	{ type: 'mostArtistic', name: 'The Most Artistic Civ', description: '2 VP per Masterpiece possessed' },
+];
+
 export interface FutureTechDef {
 	type: string;
 	name: string;
@@ -159,6 +186,12 @@ export const FUTURE_TECH_DEFS: FutureTechDef[] = [
 	{ type: 'biotechnology', name: 'Biotechnology', description: '8 VPs if you have the most game symbols' },
 	{ type: 'coldFusion', name: 'Cold Fusion', description: '8 VPs if you have the most gem symbols' },
 	{ type: 'underseaAgriculture', name: 'Undersea Agriculture', description: '8 VPs if you have the most wheat symbols' },
+];
+
+export const EXPANSION_FUTURE_TECH_DEFS: FutureTechDef[] = [
+	{ type: 'spiritualMedicine', name: 'Spiritual Medicine', description: '8 VPs if you control the most Cult tokens' },
+	{ type: 'hiveMind', name: 'Hive-Mind', description: '8 VPs if you have the most Progress cards' },
+	{ type: 'virtualReality', name: 'Virtual Reality', description: '8 VPs if you have the most Masterpieces' },
 ];
 
 export interface WonderDef {
@@ -198,6 +231,25 @@ export const WONDER_DEFS: Record<Era, WonderDef[]> = {
 	],
 };
 
+export const EXPANSION_WONDER_DEFS: Record<Era, WonderDef[]> = {
+	I: [
+		{ type: 'stonehenge', name: 'Stonehenge', description: 'Permanent: 1 gold discount when developing a tech another player already has', cost: 5, discountCiv: 'celts', discountCost: 4 },
+		{ type: 'lighthouse', name: 'Lighthouse', description: 'Your workers may move 1 extra space on the map', cost: 3 },
+	],
+	II: [
+		{ type: 'angkorWat', name: 'Angkor Wat', description: 'Immediate: Score 2 VP per wheat you control', cost: 8 },
+		{ type: 'machuPicchu', name: 'Machu Picchu', description: 'Immediate: Score 2 VP per rock you control', cost: 8, discountCiv: 'inca', discountCost: 6 },
+	],
+	III: [
+		{ type: 'alhambra', name: 'Alhambra', description: 'Activate: Advance 1 space on a culture row (ignores requirements)', cost: 8, discountCiv: 'spain', discountCost: 6, activateDescription: 'Advance 1 space on a culture row (ignores requirements)' },
+		{ type: 'tajMahal', name: 'Taj Mahal', description: 'Activate: Re-enable a used building or wonder this round', cost: 6, activateDescription: 'Re-enable a used building or wonder this round' },
+	],
+	IV: [
+		{ type: 'christTheRedeemer', name: 'Christ the Redeemer', description: 'Immediate: Remove up to 5 of your cubes from the map. Score 2 VP per cube removed', cost: 8, discountCiv: 'brazil', discountCost: 6 },
+		{ type: 'cnTower', name: 'CN Tower', description: 'Permanent: When developing a final-level tech, you may score VPs as if you were another player', cost: 10, discountCiv: 'canada', discountCost: 8 },
+	],
+};
+
 export interface BuildingDef {
 	type: string;
 	name: string;
@@ -224,6 +276,21 @@ export const BUILDING_DEFS: Record<Era, BuildingDef[]> = {
 		{ type: 'movieTheater', name: 'Movie Theater', description: '2 VP for each worker in the Agora' },
 		{ type: 'laboratory', name: 'Laboratory', description: 'Develop a technology for free' },
 		{ type: 'central', name: 'Central', description: '2 gold for each of your cities and capital on the map' },
+	],
+};
+
+export const EXPANSION_BUILDING_DEFS: Record<Era, BuildingDef[]> = {
+	I: [
+		{ type: 'temple', name: 'Temple', description: 'Activate: Activate up to 2 spaces on the Culture Row (civ must meet requirements)' },
+	],
+	II: [
+		{ type: 'barracks', name: 'Barracks', description: 'Activate: Draw 2 glory tokens, swap 1 you own with 1 drawn, return the rest' },
+	],
+	III: [
+		{ type: 'cathedral', name: 'Cathedral', description: 'Activate: Advance 1 space on the Culture Row (ignores requirements)' },
+	],
+	IV: [
+		{ type: 'militaryBase', name: 'Military Base', description: 'Immediate: Take a glory token onto this card (does not use Invasion track)' },
 	],
 };
 
@@ -270,6 +337,112 @@ export const CIV_DEFS: Record<Era, CivDef[]> = {
 	],
 };
 
+export const EXPANSION_CIV_DEFS: Record<Era, CivDef[]> = {
+	I: [
+		{ type: 'celts', number: 8, name: 'Celts', description: 'Immediate: Advance 1 space on a culture row (ignores requirements)' },
+	],
+	II: [
+		{ type: 'vikings', number: 7, name: 'Vikings', description: 'After attacking, un-exhaust one of your exhausted workers (even the attacker)' },
+		{ type: 'songhai', number: 8, name: 'Songhai', description: 'After attacking, advance on a culture row (ignores requirements)' },
+	],
+	III: [
+		{ type: 'dutch', number: 7, name: 'Dutch', description: 'May build cities on the main map. Earn 2 gold each time' },
+		{ type: 'iroquois', number: 8, name: 'Iroquois', description: 'After gaining control of a Game symbol, take 2 extra gold and advance 1 culture row space (ignores requirements). Doubled on double Game spaces' },
+	],
+	IV: [
+		{ type: 'canada', number: 7, name: 'Canada', description: 'Take 1 gold for each Rock or Wheat symbol you control' },
+		{ type: 'southAfrica', number: 8, name: 'South Africa', description: 'After taking control of a Gem symbol, advance on a culture row (ignores requirements)' },
+	],
+};
+
+// ---------------------------------------------------------------------------
+// Standalone Masterpiece cards (drawn from separate display)
+// ---------------------------------------------------------------------------
+
+export const MASTERPIECE_DEFS: CultureCardDef[] = [
+	{ type: 'mondrianGrid', name: 'Mondrian Grid', subtype: 'masterpiece', description: '2 VP & 2 gold', vp: 2, gold: 2 },
+	{ type: 'sistineChapel', name: 'Sistine Chapel', subtype: 'masterpiece', description: '1 VP & 3 gold', vp: 1, gold: 3 },
+	{ type: 'discobolusOfMyron', name: 'Discobolus of Myron', subtype: 'masterpiece', description: '2 gold for each unique resource you control' },
+	{ type: 'monaLisa', name: 'Mona Lisa', subtype: 'masterpiece', description: '1 VP for each unique resource you control' },
+	{ type: 'cupidAndPsyche', name: 'Cupid & Psyche', subtype: 'masterpiece', description: '1 VP & 3 gold', vp: 1, gold: 3 },
+	{ type: 'theWave', name: 'The Wave', subtype: 'masterpiece', description: '2 VP & 2 gold', vp: 2, gold: 2 },
+];
+
+// ---------------------------------------------------------------------------
+// Culture cards (per-era decks, 10 cards each)
+// ---------------------------------------------------------------------------
+
+export const CULTURE_CARD_DEFS: Record<Era, CultureCardDef[]> = {
+	I: [
+		// Progress
+		{ type: 'codeOfLaws', name: 'Code of Laws', subtype: 'progress', description: '2 extra gold when your worker(s) go to the Agora' },
+		{ type: 'cartography', name: 'Cartography', subtype: 'progress', description: 'Workers move 1 extra space' },
+		{ type: 'animalHusbandry', name: 'Animal Husbandry', subtype: 'progress', description: '1 extra gold when you take control of a Game symbol' },
+		{ type: 'irrigation', name: 'Irrigation', subtype: 'progress', description: '1 extra gold when you take control of a Wheat symbol' },
+		{ type: 'bronzeWorking', name: 'Bronze Working', subtype: 'progress', description: '1 extra gold when you take control of a Rock symbol' },
+		// Cult
+		{ type: 'mysticism', name: 'Mysticism', subtype: 'cult', description: 'End of game: 1 VP for each spot not covered', cultSpots: 5, cultSpotVP: 1 },
+		// Government
+		{ type: 'cityState', name: 'City-State', subtype: 'government', description: 'Discount of 1 gold when you attack' },
+		{ type: 'monarchy', name: 'Monarchy', subtype: 'government', description: 'While in a Golden Age, gain 1 extra gold (normally 2)' },
+		// Masterpiece
+		{ type: 'odyssey', name: 'Odyssey', subtype: 'masterpiece', description: 'Immediately get 2 VPs', vp: 2 },
+		// Building
+		{ type: 'cultureLibrary', name: 'Library', subtype: 'building', description: 'Activate: Develop a tech at a discount of 2 gold' },
+	],
+	II: [
+		// Progress
+		{ type: 'gunpowder', name: 'Gunpowder', subtype: 'progress', description: 'Extra attack at a cost of 5 gold' },
+		{ type: 'navigation', name: 'Navigation', subtype: 'progress', description: 'Workers move 2 extra spaces on the map' },
+		{ type: 'alchemy', name: 'Alchemy', subtype: 'progress', description: '1 extra gold when you take control of a Gem symbol' },
+		{ type: 'cropRotation', name: 'Crop Rotation', subtype: 'progress', description: '1 extra gold when you take control of a Wheat symbol' },
+		{ type: 'ironWorking', name: 'Iron Working', subtype: 'progress', description: '1 extra gold when you take control of a Rock symbol' },
+		// Cult
+		{ type: 'religion', name: 'Religion', subtype: 'cult', description: 'End of game: 2 VP for each spot not covered', cultSpots: 4, cultSpotVP: 2 },
+		// Government
+		{ type: 'theocracy', name: 'Theocracy', subtype: 'government', description: 'When you spread a cult token, get 2 gold' },
+		{ type: 'feudalism', name: 'Feudalism', subtype: 'government', description: 'After an attack, draw 2 glory tokens. Keep one, return the other' },
+		// Masterpiece
+		{ type: 'laPrimavera', name: 'La Primavera', subtype: 'masterpiece', description: 'Immediately get 3 VPs', vp: 3 },
+		// Building
+		{ type: 'cultureBarrack', name: 'Barrack', subtype: 'building', description: 'Activate: Draw 2 glory tokens, swap one with a glory token you own, return the other 2' },
+	],
+	III: [
+		// Progress
+		{ type: 'justiceSystem', name: 'Justice System', subtype: 'progress', description: '2 extra gold when one of your workers goes to the Agora' },
+		{ type: 'militaryTactic', name: 'Military Tactic', subtype: 'progress', description: 'Extra attack at a cost of 8 gold' },
+		{ type: 'chemistry', name: 'Chemistry', subtype: 'progress', description: '1 extra gold when you take control of a Gem symbol' },
+		{ type: 'mechanizedAgriculture', name: 'Mechanized Agriculture', subtype: 'progress', description: '1 extra gold when you take control of a Wheat symbol' },
+		{ type: 'combustion', name: 'Combustion', subtype: 'progress', description: '1 extra gold when you take control of a Rock symbol' },
+		// Cult
+		{ type: 'theology', name: 'Theology', subtype: 'cult', description: 'End of game: 3 VP for each spot not covered', cultSpots: 4, cultSpotVP: 3 },
+		// Government
+		{ type: 'republic', name: 'Republic', subtype: 'government', description: 'While in a Golden Age, gain 2 extra VPs on your turn (normally 0)' },
+		{ type: 'totalitarianism', name: 'Totalitarianism', subtype: 'government', description: 'When you found a city, spread up to 4 cult tokens (may be from different cult cards)' },
+		// Masterpiece
+		{ type: 'waterLilies', name: 'Water Lilies', subtype: 'masterpiece', description: 'Immediately get 4 VPs', vp: 4 },
+		// Building
+		{ type: 'cultureFactory', name: 'Factory', subtype: 'building', description: 'Activate: Un-exhaust one of your exhausted workers on the map' },
+	],
+	IV: [
+		// Progress
+		{ type: 'atomicEnergy', name: 'Atomic Energy', subtype: 'progress', description: 'Immediate: Spend 2 gold per glory token you have, score 2 VP each' },
+		{ type: 'satellites', name: 'Satellites', subtype: 'progress', description: 'Immediate: Spend any gold, score 1 VP per 2 gold spent' },
+		{ type: 'superconductors', name: 'Superconductors', subtype: 'progress', description: 'Immediate: Spend 1 gold per Gem controlled, score 1 VP each' },
+		{ type: 'sanitarySystem', name: 'Sanitary System', subtype: 'progress', description: 'Immediate: Spend 1 gold per Wheat controlled, score 1 VP each' },
+		{ type: 'robotics', name: 'Robotics', subtype: 'progress', description: 'Immediate: Spend 1 gold per Rock controlled, score 1 VP each' },
+		// Cult
+		{ type: 'syncretism', name: 'Syncretism', subtype: 'cult', description: 'End of game: 5 VP for each spot not covered', cultSpots: 3, cultSpotVP: 5 },
+		// Government
+		{ type: 'democracy', name: 'Democracy', subtype: 'government', description: 'Whenever an opponent attacks you, score 4 VPs' },
+		{ type: 'communism', name: 'Communism', subtype: 'government', description: 'Immediate: Discard all cult tokens under your control. Spend 1 gold per token for 2 VPs each' },
+		// Masterpiece
+		{ type: 'guernica', name: 'Guernica', subtype: 'masterpiece', description: 'Immediately get 5 VPs', vp: 5 },
+		// Building
+		{ type: 'cultureMilitaryBase', name: 'Military Base', subtype: 'building', description: 'Immediate: Take a glory token from the reserve, place it on the card' },
+	],
+};
+
 export type EraDecks = Record<Era, GameCard[]>;
 
 export interface CardDecks {
@@ -278,6 +451,36 @@ export interface CardDecks {
 }
 
 export type BoardCubeKey = `${number},${number}`;
+
+// ---------------------------------------------------------------------------
+// Culture Board types (Cults & Culture expansion)
+// ---------------------------------------------------------------------------
+
+export interface CultureGridCell {
+	row: number;
+	col: number;
+	requirement: string | null;
+}
+
+export interface CultCardState {
+	card: GameCard;
+	remainingTokens: number;
+	tokenTypes?: number[];
+}
+
+export interface CultureBoardState {
+	grid: CultureGridCell[][];
+	tokenPositions: Record<string, number[]>;
+	cultureDecks: Record<Era, GameCard[]>;
+	cultureDisplay: GameCard[];
+	masterpieceDeck: GameCard[];
+	cultTokensOnBoard: Record<string, number[]>;
+	cultTokenSupply: number[];
+}
+
+// ---------------------------------------------------------------------------
+// Player state
+// ---------------------------------------------------------------------------
 
 export interface GoldenAgesPlayerState {
 	color: PlayerColor;
@@ -293,6 +496,7 @@ export interface GoldenAgesPlayerState {
 	score: number;
 	assignedLTile: TileTemplate | null;
 	assignedDominoTiles: Record<Era, TileTemplate | null>;
+	assigned1x1Tile: TileTemplate | null;
 	builtBuildings: (GameCard | null)[];
 	activatedBuildings: boolean[];
 	usedGreeceWonder: boolean;
@@ -300,9 +504,158 @@ export interface GoldenAgesPlayerState {
 	gloryTokens: number[];
 	builtWonders: GameCard[];
 	activatedWonders: boolean[];
+	cultureScore: number;
+	progressCards: GameCard[];
+	governmentCard: GameCard | null;
+	cultCards: CultCardState[];
+	masterpieceCards: GameCard[];
 }
 
 export const INVASION_COSTS = [3, 5, 8, 12];
+
+const CULTURE_GRID_REQUIREMENTS: (string | null)[][] = [
+	[null, 'tech_lvl_3', 'tech_lvl_4', 'tech_lvl_5'],
+	[null, 'glory_1',    'glory_2',    'glory_3'],
+	[null, 'cubes_3',    'cubes_6',    'cubes_9'],
+	[null, 'wonders_1',  'wonders_2',  'wonders_3'],
+	[null, 'gold_6',     'gold_12',    'gold_18'],
+];
+
+export const CULTURE_GRID_ROWS = CULTURE_GRID_REQUIREMENTS.length;
+export const CULTURE_GRID_COLS = CULTURE_GRID_REQUIREMENTS[0].length;
+
+export const CULTURE_GRID: CultureGridCell[][] = CULTURE_GRID_REQUIREMENTS.map((reqs, row) =>
+	reqs.map((req, col) => ({ row, col, requirement: req })),
+);
+
+export function checkCultureRequirement(
+	requirement: string | null,
+	player: GoldenAgesPlayerState,
+	G: GoldenAgesState,
+	playerId: string,
+): boolean {
+	if (requirement === null) return true;
+
+	const parts = requirement.split('_');
+	const value = parseInt(parts[parts.length - 1], 10);
+
+	if (requirement.startsWith('tech_lvl_')) {
+		const col = value - 1;
+		return player.researchedTechs.some((row) => row[col]);
+	}
+	if (requirement.startsWith('glory_')) {
+		return player.gloryTokens.length >= value;
+	}
+	if (requirement.startsWith('cubes_')) {
+		let cubesOnMap = 0;
+		for (const city of G.cities) {
+			if (city.owner === playerId) cubesOnMap += city.cubes;
+		}
+		return cubesOnMap >= value;
+	}
+	if (requirement.startsWith('wonders_')) {
+		return player.builtWonders.length >= value;
+	}
+	if (requirement.startsWith('gold_')) {
+		return player.gold >= value;
+	}
+
+	return false;
+}
+
+const CULTURE_DISPLAY_SIZE = 5;
+const CULT_TOKEN_TYPES = 6;
+const CULT_TOKENS_PER_TYPE = 3;
+
+export function advanceCultureRow(
+	G: GoldenAgesState,
+	playerId: string,
+	row: number,
+	ignoreRequirements: boolean,
+): boolean {
+	if (!G.cultureBoard) return false;
+
+	const positions = G.cultureBoard.tokenPositions[playerId];
+	if (!positions) return false;
+
+	const currentCol = positions[row];
+	if (currentCol >= CULTURE_GRID_COLS - 1) return false;
+
+	const nextCol = currentCol + 1;
+	const player = G.players[playerId];
+	if (!player) return false;
+
+	if (!ignoreRequirements) {
+		const cell = G.cultureBoard.grid[row][nextCol];
+		if (!checkCultureRequirement(cell.requirement, player, G, playerId)) return false;
+	}
+
+	positions[row] = nextCol;
+	player.cultureScore++;
+	G.pendingCulturePicks++;
+	return true;
+}
+
+function applyMasterpieceEffect(G: GoldenAgesState, player: GoldenAgesPlayerState, playerId: string, card: GameCard): void {
+	player.score += card.vp ?? 0;
+	player.gold += card.gold ?? 0;
+
+	if (card.id === 'masterpiece-discobolusOfMyron') {
+		const types: ResourceType[] = ['game', 'wheat', 'rock', 'gem'];
+		let unique = 0;
+		for (const t of types) {
+			if (countPlayerResources(G, playerId, t) > 0) unique++;
+		}
+		player.gold += unique * 2;
+	} else if (card.id === 'masterpiece-monaLisa') {
+		const types: ResourceType[] = ['game', 'wheat', 'rock', 'gem'];
+		let unique = 0;
+		for (const t of types) {
+			if (countPlayerResources(G, playerId, t) > 0) unique++;
+		}
+		player.score += unique;
+	}
+}
+
+function receiveCultureCard(G: GoldenAgesState, playerId: string, card: GameCard): void {
+	const player = G.players[playerId];
+	if (!player) return;
+
+	switch (card.cultureSubtype) {
+		case 'progress':
+			player.progressCards.push(card);
+			break;
+		case 'masterpiece':
+			player.masterpieceCards.push(card);
+			player.score += card.vp ?? 0;
+			break;
+		case 'government':
+			player.governmentCard = card;
+			break;
+		case 'cult':
+			player.cultCards.push({
+				card,
+				remainingTokens: card.cultSpots ?? 0,
+			});
+			G.pendingCultFill = {
+				cardIndex: player.cultCards.length - 1,
+				spotsRemaining: card.cultSpots ?? 0,
+			};
+			break;
+		case 'building':
+			player.hand.push(card);
+			break;
+	}
+}
+
+function refillCultureDisplay(G: GoldenAgesState): void {
+	if (!G.cultureBoard) return;
+	const deck = G.cultureBoard.cultureDecks[G.currentEra];
+	while (G.cultureBoard.cultureDisplay.length < CULTURE_DISPLAY_SIZE && deck.length > 0) {
+		const card = deck.splice(0, 1)[0];
+		if (card) G.cultureBoard.cultureDisplay.push(card);
+	}
+}
 
 export const GLORY_TOKEN_POOL: number[] = [
 	...Array(2).fill(2),
@@ -310,6 +663,12 @@ export const GLORY_TOKEN_POOL: number[] = [
 	...Array(4).fill(4),
 	...Array(4).fill(5),
 	...Array(2).fill(6),
+];
+
+export const EXPANSION_GLORY_TOKENS: number[] = [
+	...Array(2).fill(3),
+	...Array(6).fill(4),
+	...Array(2).fill(5),
 ];
 
 export function getUnlockedBuildingSlots(player: GoldenAgesPlayerState): boolean[] {
@@ -377,16 +736,22 @@ export interface GoldenAgesState extends BaseGameState {
 	eraJudgementCard: GameCard | null;
 	eraIVRemainingTurns: number;
 	endGameScored: boolean;
+	/** Per-player breakdown of final score (filled by performEndGameScoring). */
+	endGameScoreBreakdown: Record<string, { label: string; vp: number }[]>;
 	boardEdges: Record<string, CellEdges>;
 	gameLog: GameLogEntry[];
 	setupOptions: { expansion: boolean };
+	cultureBoard: CultureBoardState | null;
+	pendingCulturePicks: number;
+	pendingCultFill: { cardIndex: number; spotsRemaining: number } | null;
+	pendingCultSpread: { cityRow: number; cityCol: number; remaining: number; usedDestinations: string[] } | null;
 }
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-export const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'green', 'yellow'];
+export const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'green', 'yellow', 'black'];
 
 const BOARD_ROWS = 6;
 const BOARD_COLS = 10;
@@ -399,6 +764,7 @@ const CARD_CONFIG: Record<string, { backColor: BackColor }> = {
 	building: { backColor: 'orange' },
 	futureTech: { backColor: 'blue' },
 	historysJudgement: { backColor: 'gray' },
+	culture: { backColor: 'teal' },
 };
 
 const ERA_COUNTS: Record<string, Record<Era, number>> = {
@@ -408,6 +774,7 @@ const ERA_COUNTS: Record<string, Record<Era, number>> = {
 };
 
 const SMALL_L = defineTileShape('SmallL', [[0, 0], [1, 0], [1, 1]], 'Small L');
+const SINGLE_1X1 = defineTileShape('1x1', [[0, 0]], '1x1');
 /** Index of the corner cell in SMALL_L offsets (the cell connecting both arms). */
 const SMALL_L_CORNER_INDEX = 1;
 
@@ -454,6 +821,13 @@ export const DOMINO_TILE_TEMPLATES: TileTemplate[] = [
 	{ id: 14, resources: [['game', 'game'], ['gem']], edges: [[W, L, L, W], [W, W, W, L]] },
 	{ id: 15, resources: [['gem'], ['game']], edges: [[W, L, L, W], [W, W, L, L]] },
 	{ id: 16, resources: [['wheat'], ['wheat']], edges: [[W, L, W, W], [W, W, W, L]] },
+];
+
+export const EXPANSION_1X1_TILE_TEMPLATES: TileTemplate[] = [
+	{ id: 17, resources: [['gem']], edges: [[W, W, W, W]] },
+	{ id: 18, resources: [['rock']], edges: [[W, W, L, W]] },
+	{ id: 19, resources: [['wheat']], edges: [[W, L, L, L]] },
+	{ id: 20, resources: [['gem']], edges: [ALL_LAND] },
 ];
 
 export const BOARD_RESOURCES: Record<string, ResourceType[]> = {
@@ -514,12 +888,12 @@ function generateEraDeck(
 	return shuffle(cards);
 }
 
-function buildWonderDecks(): EraDecks {
+function buildWonderDecks(expansion: boolean): EraDecks {
 	const backColor: BackColor = 'purple';
 	const eras: Era[] = ['I', 'II', 'III', 'IV'];
 	const result: EraDecks = { I: [], II: [], III: [], IV: [] };
 	for (const era of eras) {
-		const defs = WONDER_DEFS[era];
+		const defs = [...WONDER_DEFS[era], ...(expansion ? EXPANSION_WONDER_DEFS[era] : [])];
 		if (defs.length === 0) {
 			result[era] = generateEraDeck('wonder', backColor, era, ERA_COUNTS.wonder[era]);
 			continue;
@@ -541,12 +915,12 @@ function buildWonderDecks(): EraDecks {
 	return result;
 }
 
-function buildBuildingDecks(): EraDecks {
+function buildBuildingDecks(expansion: boolean): EraDecks {
 	const backColor: BackColor = 'orange';
 	const eras: Era[] = ['I', 'II', 'III', 'IV'];
 	const result: EraDecks = { I: [], II: [], III: [], IV: [] };
 	for (const era of eras) {
-		const defs = BUILDING_DEFS[era];
+		const defs = [...BUILDING_DEFS[era], ...(expansion ? EXPANSION_BUILDING_DEFS[era] : [])];
 		if (defs.length === 0) {
 			result[era] = generateEraDeck('building', backColor, era, ERA_COUNTS.building[era]);
 			continue;
@@ -572,12 +946,12 @@ function buildBuildingDecks(): EraDecks {
 	return result;
 }
 
-function buildCivDecks(): EraDecks {
+function buildCivDecks(expansion: boolean): EraDecks {
 	const backColor: BackColor = 'green';
 	const eras: Era[] = ['I', 'II', 'III', 'IV'];
 	const result: EraDecks = { I: [], II: [], III: [], IV: [] };
 	for (const era of eras) {
-		const defs = CIV_DEFS[era];
+		const defs = [...CIV_DEFS[era], ...(expansion ? EXPANSION_CIV_DEFS[era] : [])];
 		if (defs.length === 0) {
 			result[era] = generateEraDeck('civilisation', backColor, era, ERA_COUNTS.civilisation[era]);
 			continue;
@@ -600,8 +974,9 @@ function buildCivDecks(): EraDecks {
 	return result;
 }
 
-function buildJudgementDeck(): GameCard[] {
-	const cards: GameCard[] = JUDGEMENT_DEFS.map((def) => ({
+function buildJudgementDeck(expansion: boolean): GameCard[] {
+	const defs = [...JUDGEMENT_DEFS, ...(expansion ? EXPANSION_JUDGEMENT_DEFS : [])];
+	const cards: GameCard[] = defs.map((def) => ({
 		id: `judgement-${def.type}`,
 		cardType: 'historysJudgement' as CardType,
 		backColor: CARD_CONFIG.historysJudgement.backColor as BackColor,
@@ -612,14 +987,55 @@ function buildJudgementDeck(): GameCard[] {
 	return shuffle(cards);
 }
 
-function buildFutureTechDeck(): GameCard[] {
-	const cards: GameCard[] = FUTURE_TECH_DEFS.map((def) => ({
+function buildFutureTechDeck(expansion: boolean): GameCard[] {
+	const defs = [...FUTURE_TECH_DEFS, ...(expansion ? EXPANSION_FUTURE_TECH_DEFS : [])];
+	const cards: GameCard[] = defs.map((def) => ({
 		id: `futureTech-${def.type}`,
 		cardType: 'futureTech' as CardType,
 		backColor: CARD_CONFIG.futureTech.backColor as BackColor,
 		name: def.name,
 		futureTechType: def.type,
 		description: def.description,
+	}));
+	return shuffle(cards);
+}
+
+function buildCultureDecks(): Record<Era, GameCard[]> {
+	const backColor = CARD_CONFIG.culture.backColor;
+	const eras: Era[] = ['I', 'II', 'III', 'IV'];
+	const result: Record<Era, GameCard[]> = { I: [], II: [], III: [], IV: [] };
+	for (const era of eras) {
+		const defs = CULTURE_CARD_DEFS[era];
+		const cards: GameCard[] = defs.map((def) => ({
+			id: `culture-${era}-${def.type}`,
+			cardType: 'culture' as CardType,
+			era,
+			backColor,
+			name: def.name,
+			description: def.description,
+			cultureSubtype: def.subtype,
+			cultSpots: def.cultSpots,
+			cultSpotVP: def.cultSpotVP,
+			vp: def.vp,
+			gold: def.gold,
+			...(def.subtype === 'building' ? { buildingType: def.type } : {}),
+		}));
+		result[era] = shuffle(cards);
+	}
+	return result;
+}
+
+function buildMasterpieceDeck(): GameCard[] {
+	const backColor = CARD_CONFIG.culture.backColor;
+	const cards: GameCard[] = MASTERPIECE_DEFS.map((def) => ({
+		id: `masterpiece-${def.type}`,
+		cardType: 'culture' as CardType,
+		backColor,
+		name: def.name,
+		description: def.description,
+		cultureSubtype: 'masterpiece' as CultureCardSubtype,
+		vp: def.vp,
+		gold: def.gold,
 	}));
 	return shuffle(cards);
 }
@@ -734,8 +1150,15 @@ export function getPlayerTileEdges(G: GoldenAgesState, playerId: string): CellEd
 
 function revealEraCards(G: GoldenAgesState, numPlayers: number): void {
 	const era = G.currentEra;
-	G.availableWonders = G.decks.wonder[era].splice(0);
+	const wonderDraw = ERA_COUNTS.wonder[era];
+	G.availableWonders = G.decks.wonder[era].splice(0, wonderDraw);
 	G.availableBuildings = G.decks.building[era].splice(0, numPlayers);
+
+	if (G.cultureBoard) {
+		G.cultureBoard.cultureDisplay = [];
+		refillCultureDisplay(G);
+	}
+
 	G.phase = 'eraStart';
 	G.eraStartDone = 0;
 }
@@ -746,17 +1169,31 @@ function revealEraCards(G: GoldenAgesState, numPlayers: number): void {
 
 const NEXT_ERA: Record<Era, Era | null> = { I: 'II', II: 'III', III: 'IV', IV: null };
 
-function applyImmediateTechEffects(G: GoldenAgesState, player: GoldenAgesPlayerState, row: number, col: number): void {
+function applyImmediateTechEffects(
+	G: GoldenAgesState,
+	player: GoldenAgesPlayerState,
+	row: number,
+	col: number,
+	mirrorResourcePlayerId?: string,
+): void {
 	if (col !== 4) return;
 	const resourceToCount: Record<number, ResourceType> = { 0: 'gem', 1: 'wheat', 2: 'rock' };
 	const vpPerResource: Record<number, number> = { 0: 3, 1: 2, 2: 2 };
+
+	// CN Tower: score VPs using another player's resources/cubes instead of the developer's
+	const countForPlayerId =
+		mirrorResourcePlayerId && G.players[mirrorResourcePlayerId] && mirrorResourcePlayerId !== Object.keys(G.players).find((id) => G.players[id] === player)
+			? mirrorResourcePlayerId
+			: Object.keys(G.players).find((id) => G.players[id] === player);
+
+	if (!countForPlayerId) return;
 
 	if (row <= 2) {
 		const targetRes = resourceToCount[row];
 		const vpPer = vpPerResource[row];
 		let count = 0;
 		for (const [key, owner] of Object.entries(G.controlledResources)) {
-			if (owner !== Object.keys(G.players).find((id) => G.players[id] === player)) continue;
+			if (owner !== countForPlayerId) continue;
 			const resources = G.boardResources[key];
 			if (resources) {
 				for (const r of resources) {
@@ -767,9 +1204,8 @@ function applyImmediateTechEffects(G: GoldenAgesState, player: GoldenAgesPlayerS
 		player.score += count * vpPer;
 	} else if (row === 3) {
 		let cubesOnMap = 0;
-		const playerId = Object.keys(G.players).find((id) => G.players[id] === player);
 		for (const city of G.cities) {
-			if (city.owner === playerId) cubesOnMap += city.cubes;
+			if (city.owner === countForPlayerId) cubesOnMap += city.cubes;
 		}
 		player.score += cubesOnMap;
 	}
@@ -782,7 +1218,13 @@ const CIV_FREE_TECH: Record<string, [number, number]> = {
 	persia: [0, 1],
 };
 
-function applyCivCardEffect(G: GoldenAgesState, player: GoldenAgesPlayerState, card: GameCard, indiaRow?: number): void {
+function applyCivCardEffect(
+	G: GoldenAgesState,
+	player: GoldenAgesPlayerState,
+	card: GameCard,
+	playerId: string,
+	indiaRow?: number,
+): void {
 	if (!card.civType) return;
 
 	const freeTech = CIV_FREE_TECH[card.civType];
@@ -848,6 +1290,15 @@ function applyCivCardEffect(G: GoldenAgesState, player: GoldenAgesPlayerState, c
 			// India skips immediate VP effects — only gets end-game VP from the tech's back side
 		}
 	}
+
+	if (card.civType === 'celts' && G.cultureBoard) {
+		for (let r = 0; r < CULTURE_GRID_ROWS; r++) {
+			if (advanceCultureRow(G, playerId, r, true)) break;
+		}
+	}
+	if (card.civType === 'canada') {
+		player.gold += countPlayerResources(G, playerId, 'rock') + countPlayerResources(G, playerId, 'wheat');
+	}
 }
 
 export function getAttackCost(G: GoldenAgesState, attackerId: string, defenderId: string): number {
@@ -866,6 +1317,9 @@ export function getAttackCost(G: GoldenAgesState, attackerId: string, defenderId
 	if (attackerCiv?.civType === 'china') {
 		cost = Math.max(0, cost - 2);
 	}
+	if (hasGovernment(attacker, 'cityState')) {
+		cost = Math.max(0, cost - 1);
+	}
 
 	return cost;
 }
@@ -882,6 +1336,24 @@ function countPlayerResources(G: GoldenAgesState, playerId: string, resType: Res
 		}
 	}
 	return count;
+}
+
+function controlsCell(G: GoldenAgesState, playerId: string, r: number, c: number): boolean {
+	for (const piece of G.pieces) {
+		if (
+			piece.row === r &&
+			piece.col === c &&
+			!piece.inAgora &&
+			(piece.type === 'worker' || piece.type === 'capital') &&
+			piece.owner === playerId
+		) {
+			return true;
+		}
+	}
+	for (const city of G.cities) {
+		if (city.row === r && city.col === c && city.owner === playerId) return true;
+	}
+	return false;
 }
 
 function scoreJudgementCard(G: GoldenAgesState, card: GameCard): void {
@@ -933,6 +1405,25 @@ function scoreJudgementCard(G: GoldenAgesState, card: GameCard): void {
 				vp = techCount;
 				break;
 			}
+			// Expansion judgement: 2 VP per cult token / progress card / masterpiece
+			case 'mostSpiritual': {
+				let cultTokensControlled = 0;
+				if (G.cultureBoard) {
+					for (const [cellKey, cellTokens] of Object.entries(G.cultureBoard.cultTokensOnBoard)) {
+						const [r, c] = cellKey.split(',').map(Number);
+						const controls = controlsCell(G, pid, r, c);
+						if (controls) cultTokensControlled += cellTokens.length;
+					}
+				}
+				vp = cultTokensControlled * 2;
+				break;
+			}
+			case 'mostCultured':
+				vp = (player.progressCards?.length ?? 0) * 2;
+				break;
+			case 'mostArtistic':
+				vp = (player.masterpieceCards?.length ?? 0) * 2;
+				break;
 		}
 		player.score += vp;
 	}
@@ -972,6 +1463,21 @@ function getFutureTechCount(G: GoldenAgesState, playerId: string, ftType: string
 			return countPlayerResources(G, playerId, 'gem');
 		case 'underseaAgriculture':
 			return countPlayerResources(G, playerId, 'wheat');
+		// Expansion future techs: count for "most" comparison
+		case 'spiritualMedicine': {
+			let cultTokens = 0;
+			if (G.cultureBoard) {
+				for (const [cellKey, cellTokens] of Object.entries(G.cultureBoard.cultTokensOnBoard)) {
+					const [r, c] = cellKey.split(',').map(Number);
+					if (controlsCell(G, playerId, r, c)) cultTokens += cellTokens.length;
+				}
+			}
+			return cultTokens;
+		}
+		case 'hiveMind':
+			return player.progressCards?.length ?? 0;
+		case 'virtualReality':
+			return player.masterpieceCards?.length ?? 0;
 		default:
 			return 0;
 	}
@@ -979,11 +1485,32 @@ function getFutureTechCount(G: GoldenAgesState, playerId: string, ftType: string
 
 const TECH_BACKSIDE_VP: Record<number, number> = { 2: 1, 3: 2, 4: 4 };
 
+function getFutureTechName(ftType: string): string {
+	const def = [...FUTURE_TECH_DEFS, ...EXPANSION_FUTURE_TECH_DEFS].find((d) => d.type === ftType);
+	return def?.name ?? ftType;
+}
+
+function addScoreBreakdown(
+	G: GoldenAgesState,
+	pid: string,
+	label: string,
+	vp: number,
+): void {
+	G.players[pid].score += vp;
+	if (G.endGameScoreBreakdown[pid]) {
+		G.endGameScoreBreakdown[pid].push({ label, vp });
+	}
+}
+
 function performEndGameScoring(G: GoldenAgesState): void {
 	if (G.endGameScored) return;
 	G.endGameScored = true;
 
 	const pids = Object.keys(G.players);
+	G.endGameScoreBreakdown = {};
+	for (const pid of pids) {
+		G.endGameScoreBreakdown[pid] = [{ label: 'Score during game', vp: G.players[pid].score }];
+	}
 
 	// Future Tech cards: 8 VPs to sole leader, no ties
 	const ftTypes = new Set<string>();
@@ -1007,33 +1534,73 @@ function performEndGameScoring(G: GoldenAgesState): void {
 			}
 		}
 		if (bestPid && !tied) {
-			G.players[bestPid].score += 8;
+			addScoreBreakdown(G, bestPid, `Future Tech: ${getFutureTechName(ftType)}`, 8);
 		}
 	}
 
-	for (const player of Object.values(G.players)) {
+	for (const [pid, player] of Object.entries(G.players)) {
 		// 1 VP per 3 gold
-		player.score += Math.floor(player.gold / 3);
+		const goldVp = Math.floor(player.gold / 3);
+		if (goldVp) addScoreBreakdown(G, pid, 'Gold (1 VP per 3)', goldVp);
 
 		// Tech back-side VPs: col 2 (level 3) = 1 VP, col 3 (level 4) = 2 VP, col 4 (level 5) = 4 VP
+		let techVp = 0;
 		for (const row of player.researchedTechs) {
 			for (let col = 2; col < row.length; col++) {
 				if (row[col] && TECH_BACKSIDE_VP[col]) {
-					player.score += TECH_BACKSIDE_VP[col];
+					techVp += TECH_BACKSIDE_VP[col];
 				}
 			}
 		}
+		if (techVp) addScoreBreakdown(G, pid, 'Tech levels (3–5)', techVp);
 
 		// Glory token points
+		let gloryVp = 0;
 		for (const val of player.gloryTokens) {
-			player.score += val;
+			gloryVp += val;
 		}
+		if (gloryVp) addScoreBreakdown(G, pid, 'Glory tokens', gloryVp);
 
 		// Spiral Minaret: 2 extra VP per level 4 (col 3) and level 5 (col 4) tech
 		if (hasWonder(player, 'spiralMinaret')) {
+			let spiralVp = 0;
 			for (const row of player.researchedTechs) {
-				if (row[3]) player.score += 2;
-				if (row[4]) player.score += 2;
+				if (row[3]) spiralVp += 2;
+				if (row[4]) spiralVp += 2;
+			}
+			if (spiralVp) addScoreBreakdown(G, pid, 'Spiral Minaret', spiralVp);
+		}
+
+		// Cult card scoring: VPs for spots where tokens were spread
+		let cultCardVp = 0;
+		for (const cultCard of player.cultCards) {
+			const spots = cultCard.card.cultSpots ?? 0;
+			const spread = spots - cultCard.remainingTokens;
+			cultCardVp += spread * (cultCard.card.cultSpotVP ?? 0);
+		}
+		if (cultCardVp) addScoreBreakdown(G, pid, 'Cult cards (spread tokens)', cultCardVp);
+	}
+
+	// Board cult token scoring: each controlling player scores 1 VP per token on cells they control
+	if (G.cultureBoard) {
+		for (const [cellKey, tokens] of Object.entries(G.cultureBoard.cultTokensOnBoard)) {
+			const [r, c] = cellKey.split(',').map(Number);
+			const controllers = new Set<string>();
+			for (const piece of G.pieces) {
+				if (
+					piece.row === r &&
+					piece.col === c &&
+					!piece.inAgora &&
+					(piece.type === 'worker' || piece.type === 'capital')
+				) {
+					controllers.add(piece.owner);
+				}
+			}
+			for (const city of G.cities) {
+				if (city.row === r && city.col === c) controllers.add(city.owner);
+			}
+			for (const pid of controllers) {
+				if (tokens.length) addScoreBreakdown(G, pid, 'Cult tokens on board', tokens.length);
 			}
 		}
 	}
@@ -1052,6 +1619,14 @@ function hasWonder(player: GoldenAgesPlayerState, wonderType: string): boolean {
 	return player.builtWonders.some((w) => w.wonderType === wonderType);
 }
 
+function hasProgress(player: GoldenAgesPlayerState, type: string): boolean {
+	return player.progressCards.some((c) => c.type === type);
+}
+
+function hasGovernment(player: GoldenAgesPlayerState, type: string): boolean {
+	return player.governmentCard?.type === type;
+}
+
 function researchFreeTech(G: GoldenAgesState, player: GoldenAgesPlayerState, row: number, col: number): void {
 	if (row < 0 || row >= TECH_TREE.length || col < 1 || col >= TECH_TREE[0].length) return;
 	if (player.researchedTechs[row][col] || !player.researchedTechs[row][col - 1]) return;
@@ -1064,7 +1639,13 @@ function researchFreeTech(G: GoldenAgesState, player: GoldenAgesPlayerState, row
 	applyImmediateTechEffects(G, player, row, col);
 }
 
-function applyWonderInstantEffect(G: GoldenAgesState, player: GoldenAgesPlayerState, card: GameCard, playerId: string): void {
+function applyWonderInstantEffect(
+	G: GoldenAgesState,
+	player: GoldenAgesPlayerState,
+	card: GameCard,
+	playerId: string,
+	optionalParams?: { cubesToRemove?: number },
+): void {
 	switch (card.wonderType) {
 		case 'colossus': {
 			let cubes = 0;
@@ -1109,6 +1690,29 @@ function applyWonderInstantEffect(G: GoldenAgesState, player: GoldenAgesPlayerSt
 			const myCities = G.cities.filter((c) => c.owner === playerId).length;
 			const hasCapital = G.pieces.some((p) => p.type === 'capital' && p.owner === playerId);
 			player.score += myCities + (hasCapital ? 1 : 0);
+			break;
+		}
+		case 'angkorWat':
+			player.score += countPlayerResources(G, playerId, 'wheat') * 2;
+			break;
+		case 'machuPicchu':
+			player.score += countPlayerResources(G, playerId, 'rock') * 2;
+			break;
+		case 'christTheRedeemer': {
+			const maxRemove = Math.min(5, optionalParams?.cubesToRemove ?? 5);
+			let removed = 0;
+			for (const city of G.cities) {
+				if (city.owner !== playerId || removed >= maxRemove) continue;
+				const onCity = city.cubes;
+				const take = Math.min(onCity, maxRemove - removed);
+				if (take > 0) {
+					const c = city as { cubes: number };
+					if (typeof c.cubes === 'number') c.cubes -= take;
+					removed += take;
+					player.cubes += take;
+				}
+			}
+			player.score += removed * 2;
 			break;
 		}
 	}
@@ -1172,20 +1776,42 @@ function tryTakeControl(G: GoldenAgesState, playerId: string, row: number, col: 
 	for (const res of resources) {
 		if (res === 'game') {
 			if (player.researchedTechs[1][0]) player.gold += 1;
+			if (hasProgress(player, 'animalHusbandry')) player.gold += 1;
+			if (civType === 'iroquois') {
+				player.gold += 2;
+				if (G.cultureBoard) {
+					for (let r = 0; r < CULTURE_GRID_ROWS; r++) {
+						if (advanceCultureRow(G, playerId, r, true)) break;
+					}
+				}
+			}
 		} else if (res === 'wheat') {
 			if (player.researchedTechs[1][3]) player.gold += 3;
 			else if (player.researchedTechs[1][1]) player.gold += 1;
 			if (civType === 'inca') player.gold += 2;
+			if (hasProgress(player, 'irrigation')) player.gold += 1;
+			if (hasProgress(player, 'cropRotation')) player.gold += 1;
+			if (hasProgress(player, 'mechanizedAgriculture')) player.gold += 1;
 		} else if (res === 'rock') {
 			if (player.researchedTechs[2][3]) player.gold += 3;
 			else if (player.researchedTechs[2][1]) player.gold += 1;
 			if (civType === 'mongolia') player.gold += 2;
+			if (hasProgress(player, 'bronzeWorking')) player.gold += 1;
+			if (hasProgress(player, 'ironWorking')) player.gold += 1;
+			if (hasProgress(player, 'combustion')) player.gold += 1;
 		} else if (res === 'gem') {
 			if (player.researchedTechs[3][4]) player.gold += 4;
 			else if (player.researchedTechs[3][2]) player.gold += 2;
 			if (civType === 'aztec') player.gold += 2;
 			if (civType === 'spain') player.gold += 3;
 			if (civType === 'brazil') player.gold += 4;
+			if (hasProgress(player, 'alchemy')) player.gold += 1;
+			if (hasProgress(player, 'chemistry')) player.gold += 1;
+			if (civType === 'southAfrica' && G.cultureBoard) {
+				for (let r = 0; r < CULTURE_GRID_ROWS; r++) {
+					if (advanceCultureRow(G, playerId, r, true)) break;
+				}
+			}
 		}
 	}
 }
@@ -1201,7 +1827,12 @@ export function getMovementRange(player: GoldenAgesPlayerState): number {
 	for (let col = 0; col < MOVEMENT_RANGES.length; col++) {
 		if (player.researchedTechs[0][col]) highest = col;
 	}
-	return MOVEMENT_RANGES[highest];
+	const baseRange = MOVEMENT_RANGES[highest];
+	let bonus = 0;
+	if (hasProgress(player, 'cartography')) bonus += 1;
+	if (hasProgress(player, 'navigation')) bonus += 2;
+	if (hasWonder(player, 'lighthouse')) bonus += 1;
+	return baseRange + bonus;
 }
 
 export function getReachableCells(
@@ -1282,7 +1913,9 @@ function relocateCapital(
 const GoldenAgesGame: Game<GoldenAgesState> = {
 	name: 'TheGoldenAges',
 
-	setup: ({ ctx }: { ctx: Ctx }, setupData?: GoldenAgesSetupData): GoldenAgesState => {
+	setup: (firstArg: { ctx: Ctx; setupData?: GoldenAgesSetupData } | Ctx, secondArg?: GoldenAgesSetupData): GoldenAgesState => {
+		const ctx = typeof (firstArg as { ctx?: Ctx }).ctx !== 'undefined' ? (firstArg as { ctx: Ctx }).ctx : (firstArg as Ctx);
+		const setupData = (firstArg as { setupData?: GoldenAgesSetupData }).setupData ?? secondArg;
 		const opts = { expansion: setupData?.expansion ?? false };
 
 		const board = createSquareBoard<GamePiece>(BOARD_ROWS, BOARD_COLS);
@@ -1300,28 +1933,62 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 		);
 
 		// Build all decks
-		const civDecks = buildCivDecks();
-		const wonderDecks = buildWonderDecks();
-		const buildingDecks = buildBuildingDecks();
-		const futureTechDeck = buildFutureTechDeck();
-		const historyDeck = buildJudgementDeck();
+		const civDecks = buildCivDecks(opts.expansion);
+		const wonderDecks = buildWonderDecks(opts.expansion);
+		const buildingDecks = buildBuildingDecks(opts.expansion);
+		const futureTechDeck = buildFutureTechDeck(opts.expansion);
+		const historyDeck = buildJudgementDeck(opts.expansion);
 
 		// Draw 5 History's Judgement cards face-up
 		const historyJudgementCards = historyDeck.slice(0, HISTORY_JUDGEMENT_DRAW);
 
-		// Shuffle and deal L-tiles
+		// Build culture decks (expansion only)
+		const cultureDecks = opts.expansion ? buildCultureDecks() : null;
+		const masterpieceDeck = opts.expansion ? buildMasterpieceDeck() : null;
+
+		let cultureBoard: CultureBoardState | null = null;
+		if (opts.expansion && cultureDecks && masterpieceDeck) {
+			const cultureDisplay = cultureDecks.I.splice(0, CULTURE_DISPLAY_SIZE);
+			const tokenPositions: Record<string, number[]> = {};
+			for (let i = 0; i < ctx.numPlayers; i++) {
+				tokenPositions[String(i)] = Array(CULTURE_GRID_ROWS).fill(0);
+			}
+			cultureBoard = {
+				grid: CULTURE_GRID.map((row) => row.map((cell) => ({ ...cell }))),
+				tokenPositions,
+				cultureDecks,
+				cultureDisplay,
+				masterpieceDeck,
+				cultTokensOnBoard: {},
+				cultTokenSupply: Array(CULT_TOKEN_TYPES).fill(CULT_TOKENS_PER_TYPE),
+			};
+		}
+
+		// Shuffle and deal L-tiles (players 0-3 only; 5th player uses a domino for era I)
 		const lTiles = shuffle([...L_TILE_TEMPLATES]);
 
-		// Shuffle and deal domino tiles (4 per era for up to 4 players)
+		// Shuffle and deal domino tiles
+		const is5Player = ctx.numPlayers === 5;
 		const dominoes = shuffle([...DOMINO_TILE_TEMPLATES]);
 		const dominosByEra: Record<Era, TileTemplate[]> = { I: [], II: [], III: [], IV: [] };
+		let dominoIdx = 0;
+		if (is5Player) {
+			// 5th player gets a domino for era I
+			if (dominoes[dominoIdx]) dominosByEra.I.push(dominoes[dominoIdx]);
+			dominoIdx++;
+		}
 		const dominoEras: Era[] = ['II', 'III', 'IV'];
-		for (let e = 0; e < dominoEras.length; e++) {
-			for (let p = 0; p < 4; p++) {
-				const tile = dominoes[e * 4 + p];
-				if (tile) dominosByEra[dominoEras[e]].push(tile);
+		for (const era of dominoEras) {
+			const count = era === 'IV' && is5Player ? 4 : ctx.numPlayers;
+			for (let p = 0; p < count; p++) {
+				const tile = dominoes[dominoIdx];
+				if (tile) dominosByEra[era].push(tile);
+				dominoIdx++;
 			}
 		}
+
+		// Shuffle 1x1 tiles for 5th player era IV
+		const tiles1x1 = opts.expansion ? shuffle([...EXPANSION_1X1_TILE_TEMPLATES]) : [];
 
 		// Deal cards and resources to each player
 		const players: Record<string, GoldenAgesPlayerState> = {};
@@ -1336,6 +2003,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			const ftCard = futureTechDeck.pop();
 			if (ftCard) hand.push(ftCard);
 
+			const isFifthPlayer = is5Player && i === 4;
 			players[String(i)] = {
 				color: PLAYER_COLORS[i],
 				gold: STARTING_GOLD,
@@ -1348,13 +2016,14 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				passedThisEra: false,
 				historyCards: [],
 				score: 0,
-				assignedLTile: lTiles[i] ?? null,
+				assignedLTile: isFifthPlayer ? null : (lTiles[i] ?? null),
 				assignedDominoTiles: {
-					I: null,
+					I: isFifthPlayer ? (dominosByEra.I[0] ?? null) : null,
 					II: dominosByEra.II[i] ?? null,
 					III: dominosByEra.III[i] ?? null,
-					IV: dominosByEra.IV[i] ?? null,
+					IV: isFifthPlayer ? null : (dominosByEra.IV[i] ?? null),
 				},
+				assigned1x1Tile: isFifthPlayer ? (tiles1x1[0] ?? null) : null,
 				builtBuildings: [null, null, null],
 				activatedBuildings: [false, false, false],
 				usedGreeceWonder: false,
@@ -1362,6 +2031,11 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				gloryTokens: [],
 				builtWonders: [],
 				activatedWonders: [],
+				cultureScore: 0,
+				progressCards: [],
+				governmentCard: null,
+				cultCards: [],
+				masterpieceCards: [],
 			};
 		}
 
@@ -1394,10 +2068,11 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			boardResources: { ...BOARD_RESOURCES, ...STARTING_TILE_RESOURCES },
 			controlledResources: {},
 			cities: [],
-			gloryTokenSupply: shuffle([...GLORY_TOKEN_POOL]),
+			gloryTokenSupply: shuffle([...GLORY_TOKEN_POOL, ...(opts.expansion ? EXPANSION_GLORY_TOKENS : [])]),
 			eraJudgementCard: null,
 			eraIVRemainingTurns: -1,
 			endGameScored: false,
+			endGameScoreBreakdown: {},
 			boardEdges: {
 				'2,4': [W, L, L, L],
 				'2,5': [W, L, L, L],
@@ -1407,6 +2082,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			gameLog: [],
 			history: [],
 			setupOptions: opts,
+			cultureBoard,
+			pendingCulturePicks: 0,
+			pendingCultFill: null,
+			pendingCultSpread: null,
 		};
 
 		revealEraCards(state, ctx.numPlayers);
@@ -1435,7 +2114,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 			if (era === 'I') {
 				G.activeCivCard[ctx.currentPlayer] = newCard;
-				applyCivCardEffect(G, player, newCard, indiaRow);
+				applyCivCardEffect(G, player, newCard, ctx.currentPlayer, indiaRow);
 				appendLog(G, ctx, 'chose civilisation card');
 			} else {
 			if (keepOld) {
@@ -1443,7 +2122,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				appendLog(G, ctx, 'kept previous civilisation');
 			} else {
 				G.activeCivCard[ctx.currentPlayer] = newCard;
-				applyCivCardEffect(G, player, newCard, indiaRow);
+				applyCivCardEffect(G, player, newCard, ctx.currentPlayer, indiaRow);
 				appendLog(G, ctx, 'chose civilisation card');
 			}
 		}
@@ -1578,11 +2257,14 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			argB?: number | number[],
 			argC?: number,
 			argD?: boolean,
+			argE?: string,
 		) => {
 			if (G.phase !== 'actions') return INVALID_MOVE;
 
 			const player = G.players[ctx.currentPlayer];
 			if (!player || player.passedThisEra) return INVALID_MOVE;
+
+			if (G.pendingCulturePicks > 0 || G.pendingCultFill || G.pendingCultSpread) return INVALID_MOVE;
 
 			if (actionType === 'explorer') {
 				const workerId = argA as string;
@@ -1645,7 +2327,22 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						else if (player.researchedTechs[3][0]) player.gold += 1;
 					}
 					if (hasWonder(player, 'hagiaSophia')) player.gold += 2;
+					if (G.activeCivCard[ctx.currentPlayer]?.civType === 'dutch') player.gold += 2;
 				}
+
+				if (G.cultureBoard && foundCity) {
+					const hasCultTokens = player.cultCards.some((c) => c.remainingTokens > 0);
+					if (hasCultTokens) {
+						const isTotalitarian = player.governmentCard?.id?.includes('totalitarianism');
+						G.pendingCultSpread = {
+							cityRow: destRow,
+							cityCol: destCol,
+							remaining: isTotalitarian ? 4 : 1,
+							usedDestinations: [],
+						};
+					}
+				}
+
 				appendLog(G, ctx, foundCity ? 'Explorer (founded a city)' : 'Explorer');
 			} else if (actionType === 'soldier') {
 				const workerId = argA as string;
@@ -1694,6 +2391,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						if (pid !== ctx.currentPlayer && hasWonder(p, 'greatWall')) p.gold += 3;
 						if (pid !== ctx.currentPlayer && hasWonder(p, 'unitedNations')) p.gold += totalAttackCost;
 					}
+					for (const defenderId of defenderIds) {
+						const defender = G.players[defenderId];
+						if (defender && hasGovernment(defender, 'democracy')) defender.score += 4;
+					}
 
 					for (const ew of enemyWorkers) {
 						const capital = G.pieces.find((p) => p.type === 'capital' && p.owner === ew.owner);
@@ -1715,7 +2416,15 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					player.invasionTrackPos++;
 
 					const isChina = G.activeCivCard[ctx.currentPlayer]?.civType === 'china';
+					const isFeudalism = hasGovernment(player, 'feudalism');
 					if (isChina && G.gloryTokenSupply.length >= 2) {
+						const a = G.gloryTokenSupply.pop()!;
+						const b = G.gloryTokenSupply.pop()!;
+						const keep = Math.max(a, b);
+						const returnToken = Math.min(a, b);
+						player.gloryTokens.push(keep);
+						G.gloryTokenSupply.unshift(returnToken);
+					} else if (isFeudalism && G.gloryTokenSupply.length >= 2) {
 						const a = G.gloryTokenSupply.pop()!;
 						const b = G.gloryTokenSupply.pop()!;
 						const keep = Math.max(a, b);
@@ -1729,11 +2438,19 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					if (G.activeCivCard[ctx.currentPlayer]?.civType === 'france') {
 						player.gold += 4;
 					}
+					if (G.activeCivCard[ctx.currentPlayer]?.civType === 'songhai' && G.cultureBoard) {
+						for (let r = 0; r < CULTURE_GRID_ROWS; r++) {
+							if (advanceCultureRow(G, ctx.currentPlayer, r, true)) break;
+						}
+					}
 				}
 
 				worker.row = destRow;
 				worker.col = destCol;
 				worker.exhausted = true;
+				if (G.activeCivCard[ctx.currentPlayer]?.civType === 'vikings' && hasEnemies) {
+					worker.exhausted = false;
+				}
 
 				tryTakeControl(G, ctx.currentPlayer, destRow, destCol);
 
@@ -1758,7 +2475,22 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						else if (player.researchedTechs[3][0]) player.gold += 1;
 					}
 					if (hasWonder(player, 'hagiaSophia')) player.gold += 2;
+					if (G.activeCivCard[ctx.currentPlayer]?.civType === 'dutch') player.gold += 2;
 				}
+
+				if (G.cultureBoard && foundCity) {
+					const hasCultTokens = player.cultCards.some((c) => c.remainingTokens > 0);
+					if (hasCultTokens) {
+						const isTotalitarian = player.governmentCard?.id?.includes('totalitarianism');
+						G.pendingCultSpread = {
+							cityRow: destRow,
+							cityCol: destCol,
+							remaining: isTotalitarian ? 4 : 1,
+							usedDestinations: [],
+						};
+					}
+				}
+
 				appendLog(G, ctx, foundCity ? 'Soldier (founded a city)' : 'Soldier');
 			} else if (actionType === 'artist') {
 				const workerId = argA as string;
@@ -1770,7 +2502,19 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				worker.inAgora = true;
 				worker.exhausted = true;
-				player.score += 3;
+				if (hasProgress(player, 'codeOfLaws')) player.gold += 2;
+				if (hasProgress(player, 'justiceSystem')) player.gold += 2;
+
+				const masterpieceIndex = argB as number | undefined;
+				if (G.cultureBoard && masterpieceIndex !== undefined && masterpieceIndex >= 0) {
+					const card = G.cultureBoard.masterpieceDeck[masterpieceIndex];
+					if (!card) return INVALID_MOVE;
+					G.cultureBoard.masterpieceDeck.splice(masterpieceIndex, 1);
+					player.masterpieceCards.push(card);
+					applyMasterpieceEffect(G, player, ctx.currentPlayer, card);
+				} else {
+					player.score += 3;
+				}
 
 				if (player.researchedTechs[2][4]) player.score += 2;
 				if (G.activeCivCard[ctx.currentPlayer]?.civType === 'eu') player.gold += 4;
@@ -1794,6 +2538,8 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					worker.exhausted = true;
 					if (player.researchedTechs[2][4]) player.score += 2;
 					if (G.activeCivCard[ctx.currentPlayer]?.civType === 'eu') player.gold += 4;
+					if (hasProgress(player, 'codeOfLaws')) player.gold += 2;
+					if (hasProgress(player, 'justiceSystem')) player.gold += 2;
 				}
 
 				const cardIdx = G.availableBuildings.findIndex((c) => c.id === buildingCardId);
@@ -1805,6 +2551,9 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				const [card] = G.availableBuildings.splice(cardIdx, 1);
 				player.builtBuildings[targetSlot] = card;
+				if (card.buildingType === 'militaryBase' && G.gloryTokenSupply.length > 0) {
+					player.gloryTokens.push(G.gloryTokenSupply.pop()!);
+				}
 				appendLog(G, ctx, 'Builder');
 			} else if (actionType === 'buildWonder') {
 				const wonderCardId = argA as string;
@@ -1851,7 +2600,11 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				player.builtWonders.push(card);
 				player.activatedWonders.push(false);
 
-				applyWonderInstantEffect(G, player, card, ctx.currentPlayer);
+				const wonderOpts =
+					wonderCard.wonderType === 'christTheRedeemer'
+						? { cubesToRemove: (argB as number) ?? 5 }
+						: undefined;
+				applyWonderInstantEffect(G, player, card, ctx.currentPlayer, wonderOpts);
 				appendLog(G, ctx, 'Built a Wonder');
 			} else if (actionType === 'activateBuildingOrWonder') {
 				const rawIndex = argA as number;
@@ -1866,7 +2619,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					const wCard = player.builtWonders[wonderIndex];
 					if (!wCard.wonderType) return INVALID_MOVE;
 
-					const def = WONDER_DEFS[wCard.era ?? 'I']?.find((d) => d.type === wCard.wonderType);
+					const era = wCard.era ?? 'I';
+					const def =
+						WONDER_DEFS[era]?.find((d) => d.type === wCard.wonderType) ??
+						EXPANSION_WONDER_DEFS[era]?.find((d) => d.type === wCard.wonderType);
 					if (!def?.activateDescription) return INVALID_MOVE;
 
 					player.activatedWonders[wonderIndex] = true;
@@ -1895,6 +2651,22 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 								}
 							}
 						}
+					} else if (wCard.wonderType === 'alhambra') {
+						if (!G.cultureBoard) return INVALID_MOVE;
+						const row = argB as number;
+						if (row === undefined || row < 0 || row >= CULTURE_GRID_ROWS) return INVALID_MOVE;
+						advanceCultureRow(G, ctx.currentPlayer, row, true);
+					} else if (wCard.wonderType === 'tajMahal') {
+						const targetIdx = argB as number;
+						if (targetIdx === undefined) return INVALID_MOVE;
+						if (targetIdx >= 100) {
+							const wonderIdx = targetIdx - 100;
+							if (wonderIdx >= 0 && wonderIdx < player.activatedWonders.length) {
+								player.activatedWonders[wonderIdx] = false;
+							}
+						} else if (targetIdx >= 0 && targetIdx < player.activatedBuildings.length) {
+							player.activatedBuildings[targetIdx] = false;
+						}
 					}
 				} else {
 					// Building activation (slots 0-2)
@@ -1919,8 +2691,8 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						player.gold += 4;
 					} else if (card.buildingType === 'museum') {
 						player.gold += 6;
-					} else if (card.buildingType === 'library' || card.buildingType === 'university' || card.buildingType === 'observatory' || card.buildingType === 'laboratory') {
-						const discounts: Record<string, number> = { library: 2, university: 3, observatory: 5, laboratory: 99 };
+					} else if (card.buildingType === 'library' || card.buildingType === 'university' || card.buildingType === 'observatory' || card.buildingType === 'laboratory' || card.buildingType === 'cultureLibrary') {
+						const discounts: Record<string, number> = { library: 2, university: 3, observatory: 5, laboratory: 99, cultureLibrary: 2 };
 						const discount = discounts[card.buildingType] ?? 0;
 						const techRow = argB as number;
 						const techCol = argC as unknown as number;
@@ -1928,7 +2700,13 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						if (techRow < 0 || techRow >= TECH_TREE.length || techCol < 1 || techCol >= TECH_TREE[0].length) return INVALID_MOVE;
 						if (player.researchedTechs[techRow][techCol]) return INVALID_MOVE;
 						if (!player.researchedTechs[techRow][techCol - 1]) return INVALID_MOVE;
-						const cost = Math.max(0, TECH_COSTS[techCol] - discount);
+						let cost = Math.max(0, TECH_COSTS[techCol] - discount);
+						if (hasWonder(player, 'stonehenge')) {
+							const anyoneElseHas = Object.entries(G.players).some(
+								([pid, p]) => pid !== ctx.currentPlayer && p.researchedTechs[techRow][techCol],
+							);
+							if (anyoneElseHas) cost = Math.max(0, cost - 1);
+						}
 						if (player.gold < cost) return INVALID_MOVE;
 						player.gold -= cost;
 						player.researchedTechs[techRow][techCol] = true;
@@ -1937,14 +2715,42 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 							player.cubes += player.boardCubes[cubeKey];
 							delete player.boardCubes[cubeKey];
 						}
-						applyImmediateTechEffects(G, player, techRow, techCol);
-					} else if (card.buildingType === 'factory') {
+						const cnTowerMirror = techCol === 4 && hasWonder(player, 'cnTower') && typeof argE === 'string' && G.players[argE] && argE !== ctx.currentPlayer ? argE : undefined;
+						applyImmediateTechEffects(G, player, techRow, techCol, cnTowerMirror);
+					} else if (card.buildingType === 'factory' || card.buildingType === 'cultureFactory') {
 						const workerId = argB as unknown as string;
 						if (!workerId) return INVALID_MOVE;
 						const worker = G.pieces.find((p) => p.id === workerId);
 						if (!worker || worker.type !== 'worker' || worker.owner !== ctx.currentPlayer) return INVALID_MOVE;
 						if (!worker.exhausted || worker.inAgora) return INVALID_MOVE;
 						worker.exhausted = false;
+					} else if (card.buildingType === 'temple') {
+						if (!G.cultureBoard) return INVALID_MOVE;
+						const row1 = argB as number;
+						if (row1 !== undefined && row1 >= 0 && row1 < CULTURE_GRID_ROWS) {
+							advanceCultureRow(G, ctx.currentPlayer, row1, false);
+						}
+						const row2 = argC as unknown as number;
+						if (row2 !== undefined && row2 >= 0 && row2 < CULTURE_GRID_ROWS) {
+							advanceCultureRow(G, ctx.currentPlayer, row2, false);
+						}
+					} else if (card.buildingType === 'barracks' || card.buildingType === 'cultureBarrack') {
+						if (G.gloryTokenSupply.length < 2) return INVALID_MOVE;
+						const replaceIdx = argB as number;
+						const keepIdx = argC as unknown as number;
+						if (replaceIdx === undefined || keepIdx === undefined || replaceIdx < 0 || replaceIdx >= player.gloryTokens.length || keepIdx < 0 || keepIdx > 1) return INVALID_MOVE;
+						const drawn = [G.gloryTokenSupply.pop()!, G.gloryTokenSupply.pop()!];
+						const kept = drawn[keepIdx];
+						const returnedDrawn = drawn[1 - keepIdx];
+						const oldToken = player.gloryTokens[replaceIdx];
+						player.gloryTokens[replaceIdx] = kept;
+						G.gloryTokenSupply.push(returnedDrawn);
+						G.gloryTokenSupply.push(oldToken);
+					} else if (card.buildingType === 'cathedral') {
+						if (!G.cultureBoard) return INVALID_MOVE;
+						const row = argB as number;
+						if (row === undefined || row < 0 || row >= CULTURE_GRID_ROWS) return INVALID_MOVE;
+						advanceCultureRow(G, ctx.currentPlayer, row, true);
 					} else if (card.buildingType === 'movieTheater') {
 						const workersInAgora = G.pieces.filter((p) => p.type === 'worker' && p.inAgora).length;
 						player.score += workersInAgora * 2;
@@ -1954,9 +2760,18 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						player.gold += (myCities + (hasCapital ? 1 : 0)) * 2;
 					} else if (card.buildingType === 'wall') {
 						return INVALID_MOVE;
+					} else if (card.buildingType === 'militaryBase' || card.buildingType === 'cultureMilitaryBase') {
+						// Immediate only (glory token taken when built/placed), no activation
+						return INVALID_MOVE;
 					}
 				}
 				appendLog(G, ctx, 'Activated building or wonder');
+			} else if (actionType === 'culture') {
+				if (!G.cultureBoard) return INVALID_MOVE;
+				const row = argA as number;
+				if (typeof row !== 'number' || row < 0 || row >= CULTURE_GRID_ROWS) return INVALID_MOVE;
+				if (!advanceCultureRow(G, ctx.currentPlayer, row, false)) return INVALID_MOVE;
+				appendLog(G, ctx, 'Culture (advanced on culture row)');
 			} else if (actionType === 'startGoldenAge') {
 				const standingWorkers = G.pieces.filter(
 					(p) => p.type === 'worker' && p.owner === ctx.currentPlayer && !p.exhausted && !p.inAgora,
@@ -1997,7 +2812,13 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					if (player.researchedTechs[row][col]) return INVALID_MOVE;
 					if (!player.researchedTechs[row][col - 1]) return INVALID_MOVE;
 
-					const cost = Math.max(0, TECH_COSTS[col] - discount);
+					let cost = Math.max(0, TECH_COSTS[col] - discount);
+					if (hasWonder(player, 'stonehenge')) {
+						const anyoneElseHas = Object.entries(G.players).some(
+							([pid, p]) => pid !== ctx.currentPlayer && p.researchedTechs[row][col],
+						);
+						if (anyoneElseHas) cost = Math.max(0, cost - 1);
+					}
 					if (player.gold < cost) return INVALID_MOVE;
 
 					player.gold -= cost;
@@ -2009,7 +2830,8 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						delete player.boardCubes[cubeKey];
 					}
 
-					applyImmediateTechEffects(G, player, row, col);
+					const cnTowerMirror = col === 4 && hasWonder(player, 'cnTower') && typeof argE === 'string' && G.players[argE] && argE !== ctx.currentPlayer ? argE : undefined;
+					applyImmediateTechEffects(G, player, row, col, cnTowerMirror);
 				}
 				appendLog(G, ctx, 'Developed technology');
 			}
@@ -2036,7 +2858,11 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			const player = G.players[ctx.currentPlayer];
 			if (!player || !player.passedThisEra) return INVALID_MOVE;
 
+			if (G.pendingCulturePicks > 0 || G.pendingCultFill || G.pendingCultSpread) return INVALID_MOVE;
+
 			player.gold += GOLDEN_AGE_INCOME;
+			if (hasGovernment(player, 'monarchy')) player.gold += 1;
+			if (hasGovernment(player, 'republic')) player.score += 2;
 			appendLog(G, ctx, 'Collected 2 gold (Golden Age)');
 
 			if (G.eraIVRemainingTurns > 0) {
@@ -2051,6 +2877,160 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			}
 
 			checkEraEnd(G);
+		},
+
+		pickCultureCard: (
+			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
+			cardIndex: number,
+		) => {
+			if (!G.cultureBoard || G.pendingCulturePicks <= 0) return INVALID_MOVE;
+
+			const card = G.cultureBoard.cultureDisplay[cardIndex];
+			if (!card) return INVALID_MOVE;
+
+			G.cultureBoard.cultureDisplay.splice(cardIndex, 1);
+			receiveCultureCard(G, ctx.currentPlayer, card);
+			refillCultureDisplay(G);
+
+			G.pendingCulturePicks--;
+			appendLog(G, ctx, `picked culture card: ${card.name}`);
+		},
+
+		placeCultureBuilding: (
+			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
+			slotIndex: number,
+			handCardIndex: number,
+		) => {
+			if (!G.cultureBoard) return INVALID_MOVE;
+
+			if (G.pendingCulturePicks > 0 || G.pendingCultFill || G.pendingCultSpread) return INVALID_MOVE;
+
+			const player = G.players[ctx.currentPlayer];
+			if (!player) return INVALID_MOVE;
+
+			if (slotIndex < 0 || slotIndex >= 3) return INVALID_MOVE;
+			if (handCardIndex < 0 || handCardIndex >= player.hand.length) return INVALID_MOVE;
+
+			const card = player.hand[handCardIndex];
+			if (card.cultureSubtype !== 'building' || !card.buildingType) return INVALID_MOVE;
+
+			const unlockedSlots = getUnlockedBuildingSlots(player);
+			if (!unlockedSlots[slotIndex] || player.builtBuildings[slotIndex] !== null) return INVALID_MOVE;
+
+			player.hand.splice(handCardIndex, 1);
+			player.builtBuildings[slotIndex] = card;
+
+			if ((card.buildingType === 'militaryBase' || card.buildingType === 'cultureMilitaryBase') && G.gloryTokenSupply.length > 0) {
+				player.gloryTokens.push(G.gloryTokenSupply.pop()!);
+			}
+
+			appendLog(G, ctx, `placed culture building: ${card.name}`);
+		},
+
+		setPlayerColor: (
+			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
+			color: PlayerColor,
+		) => {
+			if (!PLAYER_COLORS.includes(color)) return INVALID_MOVE;
+			const player = G.players[ctx.currentPlayer];
+			if (!player) return INVALID_MOVE;
+			if (player.color === color) return; // already this color
+			// If another player has this color, swap: they get our current color
+			const other = Object.entries(G.players).find(([, p]) => p?.color === color);
+			if (other) {
+				const [, otherPlayer] = other;
+				if (otherPlayer) otherPlayer.color = player.color;
+			}
+			player.color = color;
+		},
+
+		fillCultCard: (
+			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
+			tokenTypes: number[],
+		) => {
+			if (!G.pendingCultFill) return INVALID_MOVE;
+
+			const player = G.players[ctx.currentPlayer];
+			if (!player) return INVALID_MOVE;
+
+			const cultCard = player.cultCards[G.pendingCultFill.cardIndex];
+			if (!cultCard) return INVALID_MOVE;
+
+			const spots = cultCard.card.cultSpots ?? 0;
+			if (tokenTypes.length !== spots) return INVALID_MOVE;
+			if (tokenTypes.some((t) => t < 0 || t > 5)) return INVALID_MOVE;
+			if (!G.cultureBoard) return INVALID_MOVE;
+
+			const supplyCopy = [...G.cultureBoard.cultTokenSupply];
+			for (const t of tokenTypes) {
+				if (supplyCopy[t] <= 0) return INVALID_MOVE;
+				supplyCopy[t]--;
+			}
+			G.cultureBoard.cultTokenSupply = supplyCopy;
+
+			cultCard.tokenTypes = tokenTypes;
+			G.pendingCultFill = null;
+			appendLog(G, ctx, `filled cult card: ${cultCard.card.name}`);
+		},
+
+		spreadCultToken: (
+			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
+			cultCardIndex: number,
+			tokenType: number,
+			destRow: number,
+			destCol: number,
+		) => {
+			if (!G.pendingCultSpread || !G.cultureBoard) return INVALID_MOVE;
+
+			const player = G.players[ctx.currentPlayer];
+			if (!player) return INVALID_MOVE;
+
+			const cultCard = player.cultCards[cultCardIndex];
+			if (!cultCard || !cultCard.tokenTypes) return INVALID_MOVE;
+
+			const typeIdx = cultCard.tokenTypes.indexOf(tokenType);
+			if (typeIdx === -1) return INVALID_MOVE;
+
+			const { cityRow, cityCol } = G.pendingCultSpread;
+			if (Math.abs(destRow - cityRow) + Math.abs(destCol - cityCol) !== 1) return INVALID_MOVE;
+
+			const hasCityOrCapital =
+				G.cities.some((c) => c.row === destRow && c.col === destCol) ||
+				G.pieces.some((p) => p.type === 'capital' && p.row === destRow && p.col === destCol);
+			if (!hasCityOrCapital) return INVALID_MOVE;
+
+			const destKey = `${destRow},${destCol}`;
+			if (G.pendingCultSpread.usedDestinations.includes(destKey)) return INVALID_MOVE;
+
+			const existing = G.cultureBoard.cultTokensOnBoard[destKey] ?? [];
+			if (existing.includes(tokenType)) return INVALID_MOVE;
+
+			cultCard.tokenTypes.splice(typeIdx, 1);
+			cultCard.remainingTokens--;
+
+			if (!G.cultureBoard.cultTokensOnBoard[destKey]) {
+				G.cultureBoard.cultTokensOnBoard[destKey] = [];
+			}
+			G.cultureBoard.cultTokensOnBoard[destKey].push(tokenType);
+			G.pendingCultSpread.usedDestinations.push(destKey);
+
+			if (player.governmentCard?.id?.includes('theocracy')) {
+				player.gold += 2;
+			}
+
+			G.pendingCultSpread.remaining--;
+			if (G.pendingCultSpread.remaining <= 0) {
+				G.pendingCultSpread = null;
+			}
+
+			appendLog(G, ctx, 'spread cult token');
+		},
+
+		skipCultSpread: (
+			{ G }: { G: GoldenAgesState; ctx: Ctx },
+		) => {
+			if (!G.pendingCultSpread) return INVALID_MOVE;
+			G.pendingCultSpread = null;
 		},
 	},
 
@@ -2079,13 +3059,13 @@ export const gameDef = defineGame<GoldenAgesState>({
 	displayName: 'The Golden Ages',
 	description: 'Build your civilisation across the ages and leave your mark on history.',
 	minPlayers: 2,
-	maxPlayers: 4,
+	maxPlayers: 5,
 	setupOptions: [
 		{
 			type: 'boolean',
 			id: 'expansion',
-			label: 'Expansion',
-			description: 'Include expansion civilizations, wonders, and buildings.',
+			label: 'Cults & Culture',
+			description: 'Include the Cults & Culture expansion.',
 			default: false,
 		},
 	],

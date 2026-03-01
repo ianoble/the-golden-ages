@@ -17,7 +17,7 @@ import {
 const props = defineProps<{ matchID: string; playerID: string }>();
 const router = useRouter();
 
-const { isConnected, isMyTurn, state, currentPlayer, gameover, reconnecting, connect, disconnect } = useGame();
+const { isConnected, isMyTurn, state, currentPlayer, gameover, reconnecting, connect, disconnect, playerID, move } = useGame();
 
 const G = computed(() => state.value as unknown as GoldenAgesState | undefined);
 const currentEra = computed(() => G.value?.currentEra ?? "I");
@@ -34,6 +34,7 @@ const PLAYER_COLOR_TEXT: Record<string, string> = {
 	blue: "text-blue-400",
 	green: "text-green-400",
 	yellow: "text-yellow-400",
+	black: "text-slate-300",
 };
 
 const currentPlayerColor = computed(() => {
@@ -125,6 +126,52 @@ watch(
 
 const confirmingAbandon = ref(false);
 const gameMenuOpen = ref(false);
+const hasAppliedSessionColor = ref(false);
+let sessionColorRetryTimer: ReturnType<typeof setTimeout> | null = null;
+const SESSION_COLOR_RETRY_MAX = 6;
+const SESSION_COLOR_RETRY_MS = 350;
+
+function tryApplySessionColor(attempt = 0) {
+	if (hasAppliedSessionColor.value || gameover.value) return;
+	const pid = playerID.value;
+	if (!pid || !isConnected.value) return;
+	const g = G.value;
+	const p = g?.players?.[pid];
+	if (!p) return;
+	const session = loadSession(gameDef.id, props.matchID);
+	if (!session?.playerColor) return;
+	if (p.color === session.playerColor) {
+		hasAppliedSessionColor.value = true;
+		return;
+	}
+	move("setPlayerColor", session.playerColor);
+	if (attempt < SESSION_COLOR_RETRY_MAX) {
+		sessionColorRetryTimer = setTimeout(() => tryApplySessionColor(attempt + 1), SESSION_COLOR_RETRY_MS);
+	}
+}
+
+// Apply chosen player color from session once connected; retry with delay so the move is accepted (game setup assigns by seat index)
+watch(
+	[() => G.value?.players, playerID, isConnected],
+	([players, pid, connected]) => {
+		if (!connected || hasAppliedSessionColor.value || gameover.value || !pid) return;
+		const p = (players as GoldenAgesState["players"])?.[pid as string];
+		if (!p) return;
+		const session = loadSession(gameDef.id, props.matchID);
+		if (!session?.playerColor) return;
+		if (p.color === session.playerColor) {
+			hasAppliedSessionColor.value = true;
+			return;
+		}
+		if (sessionColorRetryTimer) return; // already retrying
+		// Start retry chain after a short delay so the transport is ready
+		sessionColorRetryTimer = setTimeout(() => {
+			sessionColorRetryTimer = null;
+			tryApplySessionColor(0);
+		}, 200);
+	},
+	{ immediate: true }
+);
 
 function closeGameMenu() {
 	gameMenuOpen.value = false;
@@ -194,6 +241,7 @@ watch([isMyTurn, currentPlayerColor, currentPhase], () => nextTick(measureHeader
 
 onUnmounted(() => {
 	if (cueTimeout) clearTimeout(cueTimeout);
+	if (sessionColorRetryTimer) clearTimeout(sessionColorRetryTimer);
 	disconnect();
 	stopVotePolling();
 	document.removeEventListener('click', onClickOutsideMenu);
@@ -350,6 +398,7 @@ async function abandonGame() {
 									'bg-blue-900/40 text-blue-300': currentPlayerColor === 'blue',
 									'bg-green-900/40 text-green-300': currentPlayerColor === 'green',
 									'bg-yellow-900/40 text-yellow-300': currentPlayerColor === 'yellow',
+									'bg-slate-800/60 text-slate-200': currentPlayerColor === 'black',
 								}"
 							>
 								<span class="capitalize">{{ currentPlayerColor }}</span>'s turn

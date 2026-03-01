@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { saveSession, loadSession, clearSession } from "@engine/client";
-import { gameDef } from "../logic/game-logic";
+import { gameDef, PLAYER_COLORS, type PlayerColor } from "../logic/game-logic";
 import { SERVER_URL } from "../config";
 import { useAuth, authHeaders, syncSessionToServer, deleteServerSession, fetchServerSessions } from "../composables/useAuth";
 
@@ -59,6 +59,7 @@ async function restoreServerSessions() {
 interface MatchPlayer {
 	id: number;
 	name?: string;
+	data?: { color?: string };
 }
 
 interface MatchInfo {
@@ -89,6 +90,7 @@ const errorMsg = ref("");
 const showCreateForm = ref(false);
 const numPlayers = ref(gameDef.minPlayers);
 const creating = ref(false);
+const selectedColor = ref<PlayerColor>("red");
 
 function buildDefaultSetupData(): Record<string, unknown> {
 	const data: Record<string, unknown> = {};
@@ -99,9 +101,39 @@ function buildDefaultSetupData(): Record<string, unknown> {
 }
 const setupData = ref<Record<string, unknown>>(buildDefaultSetupData());
 
+const BASE_MAX_PLAYERS = 4;
+const effectiveMaxPlayers = computed(() =>
+	setupData.value.expansion ? gameDef.maxPlayers : Math.min(gameDef.maxPlayers, BASE_MAX_PLAYERS),
+);
+watch(effectiveMaxPlayers, (max) => {
+	if (numPlayers.value > max) numPlayers.value = max;
+});
+
 const hostedMatchID = ref<string | null>(null);
 const hostedPlayers = ref<MatchPlayer[]>([]);
 const linkCopied = ref(false);
+
+const joinModalMatchID = ref<string | null>(null);
+const joinModalColor = ref<PlayerColor>("red");
+function openJoinModal(game: MatchInfo) {
+	joinModalMatchID.value = game.matchID;
+	const taken = new Set(
+		game.players.map((p) => p.data?.color).filter(Boolean) as string[],
+	);
+	const available = PLAYER_COLORS.filter((c) => !taken.has(c));
+	joinModalColor.value = (available[0] as PlayerColor) ?? "red";
+}
+function closeJoinModal() {
+	joinModalMatchID.value = null;
+}
+const joinModalAvailableColors = computed(() => {
+	if (!joinModalMatchID.value) return [];
+	const game = openGames.value.find((g) => g.matchID === joinModalMatchID.value);
+	const taken = new Set(
+		(game?.players ?? []).map((p) => p.data?.color).filter(Boolean) as string[],
+	);
+	return PLAYER_COLORS.filter((c) => !taken.has(c));
+});
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -208,7 +240,11 @@ async function createMatch() {
 		const joinRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/${matchID}/join`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ playerID: "0", playerName: name }),
+			body: JSON.stringify({
+				playerID: "0",
+				playerName: name,
+				data: { color: selectedColor.value },
+			}),
 		});
 		if (!joinRes.ok) throw new Error("Failed to claim host seat");
 		const { playerCredentials } = (await joinRes.json()) as { playerCredentials: string };
@@ -217,6 +253,7 @@ async function createMatch() {
 			playerID: "0",
 			credentials: playerCredentials,
 			playerName: name,
+			playerColor: selectedColor.value,
 		});
 		await syncSessionToServer(gameDef.id, matchID, "0", playerCredentials, name);
 
@@ -236,11 +273,13 @@ async function createMatch() {
 // Join an open game
 // ---------------------------------------------------------------------------
 
-async function joinGame(matchID: string) {
+async function joinGame(matchID: string, color?: PlayerColor) {
 	errorMsg.value = "";
+	closeJoinModal();
 
 	try {
 		const name = playerName.value.trim() || "Player";
+		const colorToUse = color ?? joinModalColor.value;
 
 		const match = await fetchMatch(matchID);
 		if (!match) throw new Error("Match not found");
@@ -252,7 +291,11 @@ async function joinGame(matchID: string) {
 		const joinRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/${matchID}/join`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ playerID: seatID, playerName: name }),
+			body: JSON.stringify({
+				playerID: seatID,
+				playerName: name,
+				data: { color: colorToUse },
+			}),
 		});
 		if (!joinRes.ok) throw new Error("Failed to claim seat");
 		const { playerCredentials } = (await joinRes.json()) as { playerCredentials: string };
@@ -261,6 +304,7 @@ async function joinGame(matchID: string) {
 			playerID: seatID,
 			credentials: playerCredentials,
 			playerName: name,
+			playerColor: colorToUse,
 		});
 		await syncSessionToServer(gameDef.id, matchID, seatID, playerCredentials, name);
 
@@ -601,12 +645,12 @@ onUnmounted(stopPolling);
 								<span class="text-xl font-bold w-6 text-center">{{ numPlayers }}</span>
 								<button
 									class="w-9 h-9 rounded-lg bg-slate-700 border border-slate-600 text-lg font-bold hover:bg-slate-600 transition-colors disabled:opacity-40"
-									:disabled="numPlayers >= gameDef.maxPlayers"
-									@click="numPlayers++"
-								>
-									+
-								</button>
-								<span class="text-sm text-slate-500 ml-1">({{ gameDef.minPlayers }}&ndash;{{ gameDef.maxPlayers }})</span>
+								:disabled="numPlayers >= effectiveMaxPlayers"
+								@click="numPlayers++"
+							>
+								+
+							</button>
+							<span class="text-sm text-slate-500 ml-1">({{ gameDef.minPlayers }}&ndash;{{ effectiveMaxPlayers }})</span>
 							</div>
 						</div>
 
@@ -632,6 +676,25 @@ onUnmounted(stopPolling);
 								<p v-if="opt.description" class="text-xs text-slate-500 ml-14">{{ opt.description }}</p>
 							</div>
 						</template>
+
+						<!-- Your color (when creating) -->
+						<div class="space-y-2">
+							<label class="block text-sm text-slate-400">Your color</label>
+							<div class="flex flex-wrap gap-2">
+								<button
+									v-for="c in PLAYER_COLORS"
+									:key="c"
+									type="button"
+									class="w-9 h-9 rounded-full border-2 transition-all shrink-0"
+									:class="[
+										selectedColor === c ? 'border-white scale-110 ring-2 ring-white/50' : 'border-slate-600 hover:border-slate-500',
+										{ red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', yellow: 'bg-yellow-400', black: 'bg-slate-700' }[c],
+									]"
+									:title="c"
+									@click="selectedColor = c"
+								/>
+							</div>
+						</div>
 
 						<div class="flex gap-2">
 							<button
@@ -733,12 +796,12 @@ onUnmounted(stopPolling);
 											}}
 										</p>
 									</div>
-									<button
-										class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition-colors"
-										@click="joinGame(game.matchID)"
-									>
-										Join
-									</button>
+								<button
+									class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition-colors"
+									@click="openJoinModal(game)"
+								>
+									Join
+								</button>
 								</div>
 							</div>
 						</div>
@@ -780,7 +843,16 @@ onUnmounted(stopPolling);
 						</div>
 						<ul class="space-y-2">
 							<li v-for="p in hostedPlayers" :key="p.id" class="flex items-center gap-3 px-3 py-2.5 bg-slate-900 rounded-lg">
-								<span class="w-2 h-2 rounded-full shrink-0" :class="p.name ? 'bg-green-400' : 'bg-slate-600'" />
+								<span
+									class="w-2 h-2 rounded-full shrink-0"
+									:class="
+										!p.name
+											? 'bg-slate-600'
+											: ({ red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', yellow: 'bg-yellow-400', black: 'bg-slate-700' } as Record<string, string>)[
+													p.data?.color ?? ''
+												] ?? 'bg-green-400'
+									"
+								/>
 								<span class="text-sm" :class="p.name ? 'text-white' : 'text-slate-600'">
 									{{ p.name || "Waiting..." }}
 								</span>
@@ -816,5 +888,46 @@ onUnmounted(stopPolling);
 			</template>
 			</template>
 		</main>
+
+		<!-- Join game: pick color -->
+		<Teleport to="body">
+			<div
+				v-if="joinModalMatchID"
+				class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+				@click.self="closeJoinModal"
+			>
+				<div class="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xl max-w-sm w-full space-y-4">
+					<h3 class="text-lg font-semibold text-white">Pick your color</h3>
+					<div class="flex flex-wrap gap-2">
+						<button
+							v-for="c in joinModalAvailableColors"
+							:key="c"
+							type="button"
+							class="w-10 h-10 rounded-full border-2 transition-all shrink-0"
+							:class="[
+								joinModalColor === c ? 'border-white scale-110 ring-2 ring-white/50' : 'border-slate-600 hover:border-slate-500',
+								{ red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', yellow: 'bg-yellow-400', black: 'bg-slate-700' }[c],
+							]"
+							:title="c"
+							@click="joinModalColor = c"
+						/>
+					</div>
+					<div class="flex gap-2 pt-2">
+						<button
+							class="flex-1 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg font-medium text-white transition-colors"
+							@click="joinModalMatchID && joinGame(joinModalMatchID, joinModalColor)"
+						>
+							Join game
+						</button>
+						<button
+							class="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium text-slate-300 transition-colors"
+							@click="closeJoinModal"
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			</div>
+		</Teleport>
 	</div>
 </template>

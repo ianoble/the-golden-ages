@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { saveSession, loadSession } from '@engine/client';
-import { gameDef } from '../logic/game-logic';
+import { gameDef, PLAYER_COLORS, type PlayerColor } from '../logic/game-logic';
 import { SERVER_URL } from '../config';
 import { useAuth, syncSessionToServer, fetchServerSessions } from '../composables/useAuth';
 
@@ -15,6 +15,8 @@ const authName = ref('');
 const authPin = ref('');
 const status = ref<'auth' | 'ready' | 'joining' | 'error'>('auth');
 const errorMsg = ref('');
+const matchPlayers = ref<Array<{ id: number; name?: string; data?: { color?: string } }>>([]);
+const selectedColor = ref<PlayerColor>('red');
 
 onMounted(async () => {
 	const existing = loadSession(gameDef.id, props.matchID);
@@ -39,6 +41,30 @@ onMounted(async () => {
 	}
 });
 
+async function fetchMatchPlayers() {
+	const res = await fetch(`${SERVER_URL}/games/${gameDef.id}/${props.matchID}`);
+	if (!res.ok) return;
+	const data = (await res.json()) as { players?: Array<{ id: number; name?: string; data?: { color?: string } }> };
+	matchPlayers.value = data.players ?? [];
+	const taken = new Set(
+		(matchPlayers.value ?? []).map((p) => p.data?.color).filter(Boolean) as string[],
+	);
+	const available = PLAYER_COLORS.filter((c) => !taken.has(c));
+	if (available.length && !available.includes(selectedColor.value)) {
+		selectedColor.value = available[0] as PlayerColor;
+	}
+}
+watch(status, (s) => {
+	if (s === 'ready') fetchMatchPlayers();
+});
+
+const availableColors = computed(() => {
+	const taken = new Set(
+		matchPlayers.value.map((p) => p.data?.color).filter(Boolean) as string[],
+	);
+	return PLAYER_COLORS.filter((c) => !taken.has(c));
+});
+
 async function handleAuth() {
 	const ok = authMode.value === 'register'
 		? await register(authName.value, authPin.value)
@@ -60,7 +86,7 @@ async function joinMatch() {
 		const matchRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/${props.matchID}`);
 		if (!matchRes.ok) throw new Error('Match not found');
 		const matchData = (await matchRes.json()) as {
-			players: Array<{ id: number; name?: string }>;
+			players: Array<{ id: number; name?: string; data?: { color?: string } }>;
 		};
 
 		const openSeat = matchData.players.find((p) => !p.name);
@@ -70,7 +96,11 @@ async function joinMatch() {
 		const joinRes = await fetch(`${SERVER_URL}/games/${gameDef.id}/${props.matchID}/join`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ playerID: seatID, playerName: name }),
+			body: JSON.stringify({
+				playerID: seatID,
+				playerName: name,
+				data: { color: selectedColor.value },
+			}),
 		});
 		if (!joinRes.ok) throw new Error('Failed to claim seat');
 		const { playerCredentials } = (await joinRes.json()) as { playerCredentials: string };
@@ -79,6 +109,7 @@ async function joinMatch() {
 			playerID: seatID,
 			credentials: playerCredentials,
 			playerName: name,
+			playerColor: selectedColor.value,
 		});
 		await syncSessionToServer(gameDef.id, props.matchID, seatID, playerCredentials, name);
 
@@ -157,6 +188,24 @@ async function joinMatch() {
 				<p class="text-sm text-slate-400 text-center">
 					Joining as <strong class="text-white">{{ playerName }}</strong>
 				</p>
+
+				<div class="space-y-2">
+					<label class="block text-sm font-medium text-slate-400">Your color</label>
+					<div class="flex flex-wrap gap-2 justify-center">
+						<button
+							v-for="c in availableColors"
+							:key="c"
+							type="button"
+							class="w-10 h-10 rounded-full border-2 transition-all shrink-0"
+							:class="[
+								selectedColor === c ? 'border-white scale-110 ring-2 ring-white/50' : 'border-slate-600 hover:border-slate-500',
+								{ red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', yellow: 'bg-yellow-400', black: 'bg-slate-700' }[c],
+							]"
+							:title="c"
+							@click="selectedColor = c"
+						/>
+					</div>
+				</div>
 
 				<button
 					class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors"
