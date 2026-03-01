@@ -633,6 +633,7 @@ function receiveCultureCard(G: GoldenAgesState, playerId: string, card: GameCard
 			player.governmentCard = card;
 			break;
 		case 'cult':
+			if (!player.cultCards) player.cultCards = [];
 			player.cultCards.push({
 				card,
 				remainingTokens: card.cultSpots ?? 0,
@@ -1577,9 +1578,9 @@ function performEndGameScoring(G: GoldenAgesState): void {
 			if (spiralVp) addScoreBreakdown(G, pid, 'Spiral Minaret', spiralVp);
 		}
 
-		// Cult card scoring: VPs for spots where tokens were spread
+		// Cult card scoring: VPs for spots where tokens were spread (expansion only; guard for non-expansion)
 		let cultCardVp = 0;
-		for (const cultCard of player.cultCards) {
+		for (const cultCard of player.cultCards ?? []) {
 			const spots = cultCard.card.cultSpots ?? 0;
 			const spread = spots - cultCard.remainingTokens;
 			cultCardVp += spread * (cultCard.card.cultSpotVP ?? 0);
@@ -2398,7 +2399,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				}
 
 				if (G.cultureBoard && foundCity) {
-					const hasCultTokens = player.cultCards.some((c) => c.remainingTokens > 0);
+					const hasCultTokens = (player.cultCards ?? []).some((c) => c.remainingTokens > 0);
 					if (hasCultTokens) {
 						const isTotalitarian = player.governmentCard?.id?.includes('totalitarianism');
 						G.pendingCultSpread = {
@@ -2550,7 +2551,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				}
 
 				if (G.cultureBoard && foundCity) {
-					const hasCultTokens = player.cultCards.some((c) => c.remainingTokens > 0);
+					const hasCultTokens = (player.cultCards ?? []).some((c) => c.remainingTokens > 0);
 					if (hasCultTokens) {
 						const isTotalitarian = player.governmentCard?.id?.includes('totalitarianism');
 						G.pendingCultSpread = {
@@ -3036,7 +3037,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			const player = G.players[ctx.currentPlayer];
 			if (!player) return INVALID_MOVE;
 
-			const cultCard = player.cultCards[G.pendingCultFill.cardIndex];
+			const cultCard = (player.cultCards ?? [])[G.pendingCultFill.cardIndex];
 			if (!cultCard) return INVALID_MOVE;
 
 			const spots = cultCard.card.cultSpots ?? 0;
@@ -3068,7 +3069,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			const player = G.players[ctx.currentPlayer];
 			if (!player) return INVALID_MOVE;
 
-			const cultCard = player.cultCards[cultCardIndex];
+			const cultCard = (player.cultCards ?? [])[cultCardIndex];
 			if (!cultCard || !cultCard.tokenTypes) return INVALID_MOVE;
 
 			const typeIdx = cultCard.tokenTypes.indexOf(tokenType);
