@@ -756,6 +756,143 @@ const allScoresRevealed = computed(
 	() => playersInRevealOrder.value.length > 0 && revealedScoresCount.value >= playersInRevealOrder.value.length
 );
 
+// Final score table: one row per category, one column per player (base game + expansion categories)
+const SCORE_CATEGORY_ORDER = [
+	"Score during game",
+	"Gold (1 VP per 3)",
+	"Tech levels (3–5)",
+	"Glory tokens",
+	"Future Tech card",
+	"Spiral Minaret",
+	"Cult cards (spread tokens)",
+	"Cult tokens on board",
+] as const;
+
+const finalScoreTableRows = computed(() => {
+	if (!G.value?.endGameScoreBreakdown || !finalRankings.value.length) return [];
+	const breakdown = G.value.endGameScoreBreakdown;
+	const playerIds = finalRankings.value.map((r) => r.playerId);
+	const rows: { label: string; vpsByPlayer: Record<string, number> }[] = [];
+
+	// Future Tech: sum all "Future Tech: X" entries per player into one row
+	const futureTechVps: Record<string, number> = {};
+	for (const pid of playerIds) futureTechVps[pid] = 0;
+	let hasFutureTech = false;
+	for (const pid of playerIds) {
+		for (const item of breakdown[pid] ?? []) {
+			if (item.label.startsWith("Future Tech:")) {
+				futureTechVps[pid] += item.vp;
+				hasFutureTech = true;
+			}
+		}
+	}
+
+	for (const category of SCORE_CATEGORY_ORDER) {
+		if (category === "Future Tech card") {
+			if (!hasFutureTech) continue;
+			rows.push({ label: "Future Tech card", vpsByPlayer: { ...futureTechVps } });
+			continue;
+		}
+		const vpsByPlayer: Record<string, number> = {};
+		let hasAny = false;
+		for (const pid of playerIds) {
+			const item = (breakdown[pid] ?? []).find((e) => e.label === category);
+			const vp = item?.vp ?? 0;
+			vpsByPlayer[pid] = vp;
+			if (vp !== 0) hasAny = true;
+		}
+		// Include row if any player has this category (or for "Score during game" always show)
+		if (hasAny || category === "Score during game") {
+			rows.push({ label: category, vpsByPlayer });
+		}
+	}
+
+	// Final score row
+	const totalByPlayer: Record<string, number> = {};
+	for (const r of finalRankings.value) totalByPlayer[r.playerId] = r.score;
+	rows.push({ label: "Final score", vpsByPlayer: totalByPlayer });
+	return rows;
+});
+
+// Score table count-up animation: one cell at a time, value rolls from 0 to target
+const scoreRevealCurrentIndex = ref(0);
+const scoreRevealDisplayValue = ref(0);
+const scoreTableRevealComplete = ref(false);
+const SCORE_CELL_DURATION_MS = 420;
+const SCORE_CELL_MIN_MS = 180;
+const SCORE_CELL_MAX_MS = 700;
+
+function getScoreCellIndex(rowIdx: number, colIdx: number): number {
+	return rowIdx * finalRankings.value.length + colIdx;
+}
+
+let scoreRevealRaf = 0;
+let scoreRevealStartTime = 0;
+
+function tickScoreReveal(timestamp: number) {
+	if (!scoreRevealStartTime) scoreRevealStartTime = timestamp;
+	const elapsed = timestamp - scoreRevealStartTime;
+	const rows = finalScoreTableRows.value;
+	const numPlayers = finalRankings.value.length;
+	const totalCells = rows.length * numPlayers;
+	const currentIdx = scoreRevealCurrentIndex.value;
+	if (currentIdx >= totalCells) {
+		scoreTableRevealComplete.value = true;
+		return;
+	}
+	const rowIdx = Math.floor(currentIdx / numPlayers);
+	const colIdx = currentIdx % numPlayers;
+	const targetValue = rows[rowIdx]?.vpsByPlayer[finalRankings.value[colIdx]?.playerId ?? ""] ?? 0;
+	// Ease-out: fast start, slow finish (duration scales slightly with value for big numbers)
+	const duration = Math.min(
+		SCORE_CELL_MAX_MS,
+		Math.max(SCORE_CELL_MIN_MS, SCORE_CELL_DURATION_MS + targetValue * 12)
+	);
+	const progress = Math.min(1, elapsed / duration);
+	const easeOut = 1 - (1 - progress) * (1 - progress);
+	scoreRevealDisplayValue.value = Math.round(easeOut * targetValue);
+	if (progress >= 1) {
+		scoreRevealCurrentIndex.value = currentIdx + 1;
+		scoreRevealStartTime = timestamp;
+		scoreRevealDisplayValue.value = 0;
+		if (currentIdx + 1 < totalCells) {
+			scoreRevealRaf = requestAnimationFrame(tickScoreReveal);
+		} else {
+			scoreTableRevealComplete.value = true;
+		}
+		return;
+	}
+	scoreRevealRaf = requestAnimationFrame(tickScoreReveal);
+}
+
+function startScoreTableReveal() {
+	scoreRevealCurrentIndex.value = 0;
+	scoreRevealDisplayValue.value = 0;
+	scoreTableRevealComplete.value = false;
+	scoreRevealStartTime = 0;
+	if (finalScoreTableRows.value.length && finalRankings.value.length) {
+		scoreRevealRaf = requestAnimationFrame(tickScoreReveal);
+	} else {
+		scoreTableRevealComplete.value = true;
+	}
+}
+
+watch(
+	[allScoresRevealed, () => gameOverDismissed.value],
+	([revealed, dismissed]) => {
+		if (!revealed || dismissed) return;
+		// Small delay so the table is visible before numbers start counting
+		const t = setTimeout(() => {
+			startScoreTableReveal();
+		}, 320);
+		return () => clearTimeout(t);
+	}
+);
+
+onUnmounted(() => {
+	if (scoreRevealRaf) cancelAnimationFrame(scoreRevealRaf);
+});
+
 // ---------------------------------------------------------------------------
 // Card deck display (only Wonder and Building remain)
 // ---------------------------------------------------------------------------
@@ -4178,7 +4315,7 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 		v-if="gameIsOver && !gameOverDismissed"
 		class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center"
 	>
-		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
+		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4">
 			<h2 class="text-2xl font-bold text-amber-300 text-center mb-2">
 				Game Over
 			</h2>
@@ -4240,63 +4377,69 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 				</div>
 			</div>
 
-			<!-- Phase 2: final rankings with score breakdown -->
+			<!-- Phase 2: score table — one row per category, one column per player -->
 			<div
 				v-else
-				class="space-y-3"
+				class="overflow-x-auto"
 			>
-				<div
-					v-for="(r, idx) in finalRankings"
-					:key="r.playerId"
-					class="rounded-lg transition-all duration-300 overflow-hidden"
-					:class="idx === 0 ? 'bg-amber-900/40 border border-amber-600/40' : 'bg-slate-700/40 border border-slate-600/30'"
-				>
-					<div class="flex items-center gap-3 p-3">
-						<span
-							class="text-lg font-bold w-7 text-center shrink-0"
-							:class="idx === 0 ? 'text-amber-300' : 'text-slate-400'"
-						>
-							{{ idx === 0 ? '★' : idx + 1 }}
-						</span>
-						<div
-							class="w-4 h-4 rounded-full shrink-0"
-							:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
-						/>
-						<span
-							class="font-medium capitalize flex-1"
-							:class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
-						>
-							{{ G!.players[r.playerId].color }}
-						</span>
-						<div class="text-right">
-							<span
-								class="text-lg font-bold"
-								:class="idx === 0 ? 'text-amber-200' : 'text-slate-200'"
-							> {{ r.score }} VP </span>
-							<span class="text-xs text-slate-500 ml-1">({{ r.cities }} cities)</span>
-						</div>
-					</div>
-					<!-- Score breakdown -->
-					<div
-						v-if="G?.endGameScoreBreakdown?.[r.playerId]?.length"
-						class="px-3 pb-3 pt-0 border-t border-slate-600/30 mt-0"
-					>
-						<div class="text-[10px] text-slate-500 font-medium uppercase tracking-wide mb-1.5 mt-1.5">
-							Score breakdown
-						</div>
-						<div class="space-y-0.5">
-							<div
-								v-for="(item, i) in G.endGameScoreBreakdown[r.playerId]"
-								:key="i"
-								class="flex justify-between text-xs gap-4"
-								:class="idx === 0 ? 'text-amber-200/90' : 'text-slate-300'"
+				<table class="w-full text-sm border-collapse min-w-[320px]">
+					<thead>
+						<tr class="border-b border-slate-600">
+							<th class="text-left py-2 pr-3 text-slate-400 font-medium">Score</th>
+							<th
+								v-for="(r, idx) in finalRankings"
+								:key="r.playerId"
+								class="py-2 px-2 text-center font-medium"
+								:class="idx === 0 ? 'text-amber-300' : 'text-slate-300'"
 							>
-								<span class="truncate">{{ item.label }}</span>
-								<span class="tabular-nums shrink-0">{{ item.vp }} VP</span>
-							</div>
-						</div>
-					</div>
-				</div>
+								<div class="flex items-center justify-center gap-1.5">
+									<span
+										class="w-3 h-3 rounded-full shrink-0"
+										:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
+									/>
+									<span class="capitalize">{{ G!.players[r.playerId].color }}</span>
+									<span v-if="idx === 0" class="text-amber-400">★</span>
+								</div>
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr
+							v-for="(row, rowIdx) in finalScoreTableRows"
+							:key="row.label"
+							class="border-b border-slate-700/60"
+							:class="row.label === 'Final score' ? 'border-t-2 border-amber-600/50 bg-slate-800/50' : ''"
+						>
+							<td class="py-1.5 pr-3 text-slate-400 font-medium">
+								{{ row.label }}
+							</td>
+							<td
+								v-for="(r, colIdx) in finalRankings"
+								:key="r.playerId"
+								class="py-1.5 px-2 text-center tabular-nums transition-all duration-150 rounded"
+								:class="[
+									row.label === 'Final score' ? 'text-amber-200 font-bold' : 'text-slate-200',
+									getScoreCellIndex(rowIdx, colIdx) === scoreRevealCurrentIndex && !scoreTableRevealComplete
+										? 'score-cell-active bg-amber-500/25 text-amber-100'
+										: '',
+								]"
+							>
+								<template v-if="getScoreCellIndex(rowIdx, colIdx) < scoreRevealCurrentIndex">
+									{{ row.vpsByPlayer[r.playerId] ?? 0 }}
+								</template>
+								<template v-else-if="getScoreCellIndex(rowIdx, colIdx) === scoreRevealCurrentIndex && !scoreTableRevealComplete">
+									{{ scoreRevealDisplayValue }}
+								</template>
+								<template v-else>
+									{{ scoreTableRevealComplete ? (row.vpsByPlayer[r.playerId] ?? 0) : 0 }}
+								</template>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<p class="text-xs text-slate-500 text-center mt-2">
+					{{ finalRankings.map((r) => `${G!.players[r.playerId].color}: ${r.cities} cities`).join(' · ') }}
+				</p>
 			</div>
 
 			<div class="flex justify-center gap-3 mt-6">
@@ -4375,6 +4518,20 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 	to {
 		opacity: 1;
 		transform: scale(1);
+	}
+}
+
+/* Final score table: active cell highlight while counting up */
+.score-cell-active {
+	animation: score-cell-pulse 0.6s ease-in-out infinite;
+}
+@keyframes score-cell-pulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.25);
+	}
+	50% {
+		box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15);
 	}
 }
 </style>

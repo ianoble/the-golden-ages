@@ -15,9 +15,11 @@ export type CellValue = 'X' | 'O' | null;
 
 export interface TemplateGameState extends BaseGameState {
 	cells: CellValue[];
-	players: Record<string, { color: PlayerColor }>;
+	players: Record<string, { color: PlayerColor; score: number }>;
 	winner: string | undefined;
 	isDraw: boolean;
+	endGameScored: boolean;
+	endGameScoreBreakdown: Record<string, { label: string; vp: number }[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,15 +44,17 @@ export const TemplateGame: Game<TemplateGameState> = {
 	name: 'template-game',
 
 	setup: (ctx): TemplateGameState => {
-		const players: Record<string, { color: PlayerColor }> = {};
+		const players: Record<string, { color: PlayerColor; score: number }> = {};
 		for (let i = 0; i < ctx.numPlayers; i++) {
-			players[String(i)] = { color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
+			players[String(i)] = { color: PLAYER_COLORS[i % PLAYER_COLORS.length], score: 0 };
 		}
 		return {
 			cells: Array(9).fill(null),
 			players,
 			winner: undefined,
 			isDraw: false,
+			endGameScored: false,
+			endGameScoreBreakdown: {},
 			history: [],
 		};
 	},
@@ -66,10 +70,30 @@ export const TemplateGame: Game<TemplateGameState> = {
 		clickCell: ({ G, ctx }: { G: TemplateGameState; ctx: Ctx }, cellIndex: number) => {
 			if (cellIndex < 0 || cellIndex > 8 || G.cells[cellIndex] !== null) return INVALID_MOVE;
 			G.cells[cellIndex] = ctx.currentPlayer === '0' ? 'X' : 'O';
+			const winner = checkWinner(G.cells);
+			const isDraw = G.cells.every((c) => c !== null) && !winner;
+			if (winner || isDraw) {
+				G.endGameScored = true;
+				const pids = Object.keys(G.players);
+				for (const pid of pids) {
+					G.players[pid].score = winner === pid ? 1 : 0;
+					if (isDraw) G.players[pid].score = 0;
+				}
+				G.endGameScoreBreakdown = {};
+				for (const pid of pids) {
+					G.endGameScoreBreakdown[pid] = [
+						{ label: 'Score during game', vp: 0 },
+						{ label: 'Final score', vp: G.players[pid].score },
+					];
+				}
+				if (winner) G.winner = winner;
+				if (isDraw) G.isDraw = true;
+			}
 		},
 	},
 
 	endIf: ({ G }: { G: TemplateGameState }) => {
+		if (G.endGameScored) return G.winner ? { winner: G.winner } : G.isDraw ? { isDraw: true } : undefined;
 		const winner = checkWinner(G.cells);
 		if (winner) return { winner };
 		if (G.cells.every((c) => c !== null)) return { isDraw: true };
@@ -110,3 +134,14 @@ export const gameDef = defineGame<TemplateGameState>({
 		return true;
 	},
 });
+
+/** Rankings for the final score table (by score desc). */
+export function getPlayerRankings(G: TemplateGameState): { playerId: string; score: number; cities: number }[] {
+	const rankings = Object.keys(G.players).map((pid) => ({
+		playerId: pid,
+		score: G.players[pid].score,
+		cities: 0,
+	}));
+	rankings.sort((a, b) => b.score - a.score);
+	return rankings;
+}
