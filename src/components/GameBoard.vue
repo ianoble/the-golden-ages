@@ -1017,6 +1017,10 @@ function canDoAction(actionType: ActionType): boolean {
 const availableActionTypes = computed(() =>
 	ACTION_TYPES.filter((a) => canDoAction(a.type)).map((a) => a.type)
 );
+/** Non-worker actions to show; hide Culture when expansion is not active. */
+const visibleNonWorkerActions = computed(() =>
+	ACTION_TYPES.slice(4, 9).filter((a) => a.type !== "culture" || !!cultureBoard.value)
+);
 const isGoldenAgeOnlyOption = computed(
 	() =>
 		availableActionTypes.value.length === 1 &&
@@ -3893,7 +3897,7 @@ watch(activePrompt, (newVal) => {
 								</div>
 								<div class="grid grid-cols-2 gap-1">
 									<button
-										v-for="action in ACTION_TYPES.slice(4, 9)"
+										v-for="action in visibleNonWorkerActions"
 										:key="action.type"
 										class="w-8 h-8 rounded border flex items-center justify-center transition-colors"
 										:class="[
