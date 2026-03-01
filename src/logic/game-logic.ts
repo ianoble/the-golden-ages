@@ -704,6 +704,7 @@ export interface GameLogEntry {
 const MAX_LOG_ENTRIES = 150;
 
 function appendLog(G: GoldenAgesState, ctx: Ctx, message: string): void {
+	if (!G.gameLog) G.gameLog = [];
 	const player = G.players[ctx.currentPlayer];
 	const playerColor = player?.color;
 	G.gameLog.push({ message, playerColor });
