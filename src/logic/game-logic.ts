@@ -1884,6 +1884,28 @@ export function getReachableCells(
 }
 
 // ---------------------------------------------------------------------------
+// Return workers on covered cells to their owner's capital (when a tile is placed on top of them)
+// ---------------------------------------------------------------------------
+
+function returnWorkersOnCellsToCapital(
+	G: GoldenAgesState,
+	coveredCells: [number, number][],
+): void {
+	if (!G.pieces) return;
+	const coveredSet = new Set(coveredCells.map(([r, c]) => `${r},${c}`));
+	for (const piece of G.pieces) {
+		if (piece.type !== 'worker') continue;
+		const key = `${piece.row},${piece.col}`;
+		if (!coveredSet.has(key)) continue;
+		const capital = G.pieces.find((p) => p.type === 'capital' && p.owner === piece.owner);
+		if (capital) {
+			piece.row = capital.row;
+			piece.col = capital.col;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Capital relocation
 // ---------------------------------------------------------------------------
 
@@ -2175,6 +2197,8 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			);
 
 			const rotated = rotateTileOffsets(shape.offsets, rotation);
+			const coveredCells: [number, number][] = rotated.map(([dr, dc]) => [anchorRow + dr, anchorCol + dc]);
+			returnWorkersOnCellsToCapital(G, coveredCells);
 
 			if (!G.boardEdges) G.boardEdges = {};
 			if (tileEdges) {
