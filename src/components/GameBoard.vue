@@ -2660,12 +2660,14 @@ onUnmounted(() => {
 						</p>
 						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+							title="Place the tile without moving your capital"
 							@click="confirmPlacement(false)"
 						>
 							No, keep capital
 						</button>
 						<button
 							class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+							title="Cancel tile placement and return it to your hand"
 							@click="cancelPlacement"
 						>
 							Cancel
@@ -2677,18 +2679,21 @@ onUnmounted(() => {
 						</p>
 						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+							title="Move your capital to this tile along with its workers"
 							@click="confirmPlacement(true)"
 						>
 							Yes, move capital
 						</button>
 						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+							title="Place the tile without moving your capital"
 							@click="confirmPlacement(false)"
 						>
 							No, keep it
 						</button>
 						<button
 							class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+							title="Cancel tile placement and return it to your hand"
 							@click="cancelPlacement"
 						>
 							Cancel
@@ -2703,12 +2708,14 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Found a new city at this location"
 						@click="onConfirmCity(true)"
 					>
 						Yes
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						title="Skip founding a city here"
 						@click="onConfirmCity(false)"
 					>
 						No
@@ -2731,12 +2738,14 @@ onUnmounted(() => {
 							? 'bg-red-700 hover:bg-red-600 text-white'
 							: 'bg-slate-700 text-slate-500 cursor-not-allowed'"
 						:disabled="!canAffordSoldierAttack"
+						:title="canAffordSoldierAttack ? `Spend ${soldierAttackCost} gold to attack this position` : `Not enough gold to attack (need ${soldierAttackCost})`"
 						@click="onConfirmAttack(true)"
 					>
 						Attack
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						title="Cancel the attack"
 						@click="onConfirmAttack(false)"
 					>
 						Cancel
@@ -2750,12 +2759,14 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Found a city at the conquered location"
 						@click="onSoldierConfirmCity(true)"
 					>
 						Yes
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						title="Skip founding a city here"
 						@click="onSoldierConfirmCity(false)"
 					>
 						No
@@ -2778,6 +2789,7 @@ onUnmounted(() => {
 									: 'bg-purple-700 hover:bg-purple-600 cursor-pointer'
 							"
 							:disabled="myPlayer?.researchedTechs[rIdx][4] ?? false"
+							:title="row[4].description"
 							@click="!myPlayer?.researchedTechs[rIdx][4] && onIndiaSelectTech(rIdx)"
 						>
 							{{ row[4].name }}
@@ -2785,6 +2797,7 @@ onUnmounted(() => {
 					</div>
 					<button
 						class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+						title="Cancel and choose a different action"
 						@click="onCancelIndia"
 					>
 						Cancel
@@ -2800,6 +2813,7 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						title="Use Greece's ability to build this wonder for free (once per game)"
 						@click="onGreeceWonderChoice(true)"
 					>
 						Build Free
@@ -2807,12 +2821,14 @@ onUnmounted(() => {
 					<button
 						v-if="(myPlayer?.gold ?? 0) >= getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)"
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						:title="`Pay ${getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)} gold to build this wonder (saves Greece ability for later)`"
 						@click="onGreeceWonderChoice(false)"
 					>
 						Pay {{ getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!) }}g
 					</button>
 					<button
 						class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+						title="Cancel and choose a different action"
 						@click="onCancelGreeceChoice"
 					>
 						Cancel
@@ -2831,6 +2847,7 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Dismiss this notice"
 						@click="dismissGoldenAgeOnlyPrompt"
 					>
 						OK
@@ -2844,12 +2861,14 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						title="End your era early and collect income each turn instead"
 						@click="onConfirmGoldenAge"
 					>
 						Yes
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						title="Go back and keep taking actions"
 						@click="onCancelGoldenAge"
 					>
 						Cancel
@@ -2863,6 +2882,7 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Receive your Golden Age income and end your turn"
 						@click="onCollectIncome"
 					>
 						Collect 2 Gold
@@ -2896,6 +2916,7 @@ onUnmounted(() => {
 					</div>
 					<button
 						class="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+						title="Skip picking a History's Judgement card"
 						@click="onCancelHistoryPick"
 					>
 						Cancel
@@ -2925,6 +2946,7 @@ onUnmounted(() => {
 					<button
 						type="button"
 						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
+						title="Dismiss this notification and continue playing"
 						@click="move('acknowledgeGloryDraw')"
 					>
 						Continue
@@ -2960,6 +2982,7 @@ onUnmounted(() => {
 					<button
 						type="button"
 						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
+						title="Close this notification"
 						@click="dismissHistoryCardReveal"
 					>
 						Dismiss
@@ -3105,6 +3128,7 @@ onUnmounted(() => {
 					</div>
 					<button
 						class="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors"
+						title="Reveal this civilisation card to all players and activate it"
 						@click="onChooseCivCard(false)"
 					>
 						Reveal &amp; Confirm
@@ -3146,6 +3170,7 @@ onUnmounted(() => {
 						</div>
 						<button
 							class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition-colors"
+							title="Discard the new card and keep your existing civilisation"
 							@click="onChooseCivCard(true)"
 						>
 							Keep Current
@@ -3178,6 +3203,7 @@ onUnmounted(() => {
 						</div>
 						<button
 							class="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
+							title="Discard your current civilisation and adopt this new one"
 							@click="onChooseCivCard(false)"
 						>
 							Switch to New
@@ -3779,6 +3805,7 @@ onUnmounted(() => {
 				<button
 					type="button"
 					class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-700/60 text-amber-200 hover:bg-amber-600/60 transition-colors"
+					title="Skip spreading cult influence to a neighbouring city"
 					@click="onSkipCultSpread"
 				>
 					Skip spread
@@ -3796,6 +3823,7 @@ onUnmounted(() => {
 			<div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
 				<button
 					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
+					title="View previous player's board"
 					@click="cyclePlayer(-1)"
 				>
 					&lsaquo;
@@ -3831,6 +3859,7 @@ onUnmounted(() => {
 							{{ japanTechQueue.length }} tech{{ japanTechQueue.length > 1 ? "s" : "" }} queued ({{ japanQueuedGold }}g)
 							<button
 								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
+								title="Confirm and research all queued technologies"
 								@click="onConfirmJapanTechs"
 							>
 								Confirm
@@ -3841,6 +3870,7 @@ onUnmounted(() => {
 							<button
 								v-if="oxfordTechQueue.length > 0"
 								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
+								title="Confirm and research the selected technologies for free"
 								@click="onConfirmOxford"
 							>
 								Confirm
@@ -3861,6 +3891,7 @@ onUnmounted(() => {
 						</template>
 						<button
 							class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel technology selection"
 							@click="onCancelTechSelect"
 						>
 							&times;
@@ -3873,6 +3904,7 @@ onUnmounted(() => {
 						Select a worker
 						<button
 							class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel explorer action"
 							@click="resetExplorer"
 						>
 							&times;
@@ -3885,6 +3917,7 @@ onUnmounted(() => {
 						Select destination
 						<button
 							class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel explorer action"
 							@click="resetExplorer"
 						>
 							&times;
@@ -3897,6 +3930,7 @@ onUnmounted(() => {
 						Select a worker for Soldier
 						<button
 							class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel soldier action"
 							@click="resetSoldier"
 						>
 							&times;
@@ -3909,6 +3943,7 @@ onUnmounted(() => {
 						Select target
 						<button
 							class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel soldier action"
 							@click="resetSoldier"
 						>
 							&times;
@@ -4122,6 +4157,7 @@ onUnmounted(() => {
 
 				<button
 					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
+					title="View next player's board"
 					@click="cyclePlayer(1)"
 				>
 					&rsaquo;
@@ -4313,7 +4349,7 @@ onUnmounted(() => {
 												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default'
 										"
 										:disabled="!canDoAction(action.type)"
-										:title="action.label"
+										:title="`${action.label} — ${action.description}`"
 										@click="canDoAction(action.type) && onAction(action.type)"
 									>
 										<component
@@ -4354,7 +4390,7 @@ onUnmounted(() => {
 												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default',
 										]"
 										:disabled="!canDoAction(action.type)"
-										:title="action.label"
+										:title="`${action.label} — ${action.description}`"
 										@click="canDoAction(action.type) && onAction(action.type)"
 									>
 										<component
