@@ -1089,22 +1089,38 @@ const MOVE_LABELS: Record<string, string> = {
 	placeTile: "Placed a tile",
 	performAction: "Performed action",
 	collectGoldenAgeIncome: "Collected golden age income",
+	pickCultureCard: "Picked culture card",
+	placeCultureBuilding: "Placed culture building",
+	fillCultCard: "Filled cult card",
+	spreadCultToken: "Spread cult token",
 };
 
+const ACTION_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+	ACTION_TYPES.map((a) => [a.type, a.label]),
+);
+
 const gameLogEntries = computed<DisplayLogEntry[]>(() => {
+	const history = G.value?.history;
+	if (history && Array.isArray(history) && history.length > 0) {
+		return history.map((entry) => {
+			let message = MOVE_LABELS[entry.moveName] ?? entry.moveName;
+			if (entry.moveName === "performAction" && entry.args?.[0]) {
+				const actionType = entry.args[0] as string;
+				message = ACTION_TYPE_LABELS[actionType] ?? actionType;
+			}
+			const playerColor = G.value?.players?.[entry.playerID]?.color;
+			return { message, playerColor };
+		});
+	}
+
 	const raw = G.value?.gameLog;
 	if (!raw || !Array.isArray(raw)) return [];
-
-	const entries: DisplayLogEntry[] = [];
-	for (const item of raw) {
-		if (item.message) {
-			entries.push({
-				message: item.message,
-				playerColor: item.playerColor,
-			});
-		}
-	}
-	return entries;
+	return raw
+		.filter((item: { message?: string }) => !!item.message)
+		.map((item: { message: string; playerColor?: string }) => ({
+			message: item.message,
+			playerColor: item.playerColor,
+		}));
 });
 const gameLogOpen = ref(false);
 
@@ -2583,11 +2599,11 @@ onUnmounted(() => {
 <template>
 	<!-- Game log flyout from the left -->
 	<Teleport to="body">
-		<div class="fixed left-0 top-0 bottom-0 z-20 flex pointer-events-none">
+		<div class="fixed left-0 bottom-0 z-20 flex pointer-events-none" :style="{ top: props.headerHeight + 'px' }">
 			<!-- Tab to open (always visible when panel closed) -->
 			<button
 				type="button"
-				class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-24 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
+				class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-4 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
 				:class="gameLogOpen ? 'opacity-0 pointer-events-none' : ''"
 				title="Open game log"
 				@click="gameLogOpen = true"
