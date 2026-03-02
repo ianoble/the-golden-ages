@@ -44,6 +44,9 @@ const currentPlayerColor = computed(() => {
 	return G.value.players[cp]?.color ?? null;
 });
 
+/** True once any player has taken Golden Age in Era IV (final round; each player gets one more turn). */
+const isFinalRound = computed(() => (G.value?.eraIVRemainingTurns ?? -1) >= 0);
+
 const { requestPermission: requestTurnNotifications, permission: notificationPermission, supported: notificationsSupported } = useTurnNotifications({
 	displayName: gameDef.displayName,
 	icon: "/favicon.ico",
@@ -84,14 +87,20 @@ async function onEnableTurnNotifications() {
 	closeGameMenu();
 }
 
+const FINAL_TURN_CUE_DURATION_MS = 4500;
+const FINAL_ROUND_ANNOUNCE_MS = 5000;
+const prevIsFinalRound = ref(false);
+
 watch(
-	[isMyTurn, currentPhase],
-	([newTurn, newPhase]) => {
+	[isMyTurn, currentPhase, isFinalRound],
+	([newTurn, newPhase, finalRound]) => {
 		if (gameover.value || reconnecting.value) return;
 		const wasMyTurn = prevIsMyTurn.value;
 		const wasPhase = prevPhase.value;
+		const wasFinalRound = prevIsFinalRound.value;
 		prevIsMyTurn.value = newTurn;
 		prevPhase.value = newPhase;
+		prevIsFinalRound.value = finalRound;
 
 		if (cueTimeout) clearTimeout(cueTimeout);
 		cueTimeout = null;
@@ -101,16 +110,27 @@ watch(
 			turnCueVisible.value = false;
 		}
 
-		// Skip showing new cue on first run (no previous state)
-		if (wasPhase === undefined) return;
-
-		if (newTurn && !wasMyTurn) {
-			turnCueMessage.value = "Your turn!";
+		// When any player takes Golden Age in Era IV: notify everyone
+		if (finalRound && !wasFinalRound) {
+			turnCueMessage.value = "Final round — each player has one more turn.";
 			turnCueVisible.value = true;
 			cueTimeout = setTimeout(() => {
 				turnCueVisible.value = false;
 				cueTimeout = null;
-			}, CUE_DURATION_MS);
+			}, FINAL_ROUND_ANNOUNCE_MS);
+			return;
+		}
+
+		// Skip showing new cue on first run (no previous state)
+		if (wasPhase === undefined) return;
+
+		if (newTurn && !wasMyTurn) {
+			turnCueMessage.value = finalRound ? "This is your last turn!" : "Your turn!";
+			turnCueVisible.value = true;
+			cueTimeout = setTimeout(() => {
+				turnCueVisible.value = false;
+				cueTimeout = null;
+			}, finalRound ? FINAL_TURN_CUE_DURATION_MS : CUE_DURATION_MS);
 		} else if (newPhase !== wasPhase) {
 			turnCueMessage.value = PHASE_LABELS[newPhase];
 			turnCueVisible.value = true;
@@ -379,15 +399,26 @@ async function abandonGame() {
 							</p>
 						</div>
 					</div>
-					<div v-if="G" class="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-400 mb-0.5 md:mb-1 min-h-5 md:min-h-6">
+					<div v-if="G" class="flex items-center gap-2 md:gap-3 text-[10px] md:text-xs text-slate-400 mb-0.5 md:mb-1 min-h-5 md:min-h-6 flex-wrap">
 						<span
 							>Era <strong class="text-white">{{ currentEra }}</strong></span
 						>
 						<span class="text-slate-600">·</span>
 						<span>{{ PHASE_LABELS[currentPhase] }}</span>
+						<template v-if="isFinalRound">
+							<span class="text-slate-600">·</span>
+							<span class="px-1.5 py-0.5 rounded font-semibold bg-amber-900/70 text-amber-300 border border-amber-500/50">
+								Final round
+							</span>
+						</template>
 						<template v-if="isMyTurn">
 							<span class="text-slate-600">·</span>
-							<span class="text-emerald-400 font-medium animate-pulse">Your turn</span>
+							<span
+								class="font-medium animate-pulse"
+								:class="isFinalRound ? 'text-amber-300' : 'text-emerald-400'"
+							>
+								{{ isFinalRound ? "Your turn (last turn)" : "Your turn" }}
+							</span>
 						</template>
 						<template v-else-if="currentPlayerColor">
 							<span class="text-slate-600">·</span>
@@ -401,7 +432,7 @@ async function abandonGame() {
 									'bg-slate-800/60 text-slate-200': currentPlayerColor === 'black',
 								}"
 							>
-								<span class="capitalize">{{ currentPlayerColor }}</span>'s turn
+								<span class="capitalize">{{ currentPlayerColor }}</span>'s turn{{ isFinalRound ? " (last)" : "" }}
 							</span>
 						</template>
 					</div>
@@ -428,14 +459,18 @@ async function abandonGame() {
 				v-if="turnCueVisible && turnCueMessage"
 				class="fixed left-0 right-0 z-20 flex justify-center pointer-events-none"
 				:style="{ top: headerHeight + 12 + 'px' }"
-				:data-cue="turnCueMessage === 'Your turn!' ? 'turn' : 'phase'"
+				:data-cue="turnCueMessage === 'Your turn!' || turnCueMessage === 'This is your last turn!' ? 'turn' : 'phase'"
 			>
 				<div
 					class="px-6 py-2.5 rounded-lg shadow-lg border font-semibold text-center text-sm md:text-base"
 					:class="
-						turnCueMessage === 'Your turn!'
-							? 'bg-emerald-900/95 border-emerald-500/60 text-emerald-200'
-							: 'bg-amber-900/95 border-amber-500/60 text-amber-200'
+						turnCueMessage === 'This is your last turn!'
+							? 'bg-amber-900/95 border-amber-400/80 text-amber-100'
+							: turnCueMessage === 'Final round — each player has one more turn.'
+								? 'bg-amber-900/95 border-amber-400/80 text-amber-100'
+								: turnCueMessage === 'Your turn!'
+									? 'bg-emerald-900/95 border-emerald-500/60 text-emerald-200'
+									: 'bg-amber-900/95 border-amber-500/60 text-amber-200'
 					"
 				>
 					{{ turnCueMessage }}
@@ -448,7 +483,7 @@ async function abandonGame() {
 			<div v-if="gameover" class="mb-6 text-center">
 				<p v-if="gameover.winner === playerID" class="text-2xl font-bold text-green-400">You win!</p>
 				<p v-else-if="gameover.winner !== undefined" class="text-2xl font-bold text-red-400">You lose.</p>
-				<p v-else class="text-2xl font-bold text-slate-400">It's a draw.</p>
+				<p v-else class="text-2xl font-bold text-slate-400">Game over.</p>
 			</div>
 
 			<!-- Reconnecting overlay -->

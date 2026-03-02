@@ -749,6 +749,8 @@ export interface GoldenAgesState extends BaseGameState {
 	pendingCultSpread: { cityRow: number; cityCol: number; remaining: number; usedDestinations: string[] } | null;
 	/** Set when current player gains a glory token (for client to show a brief reveal animation). Cleared at start of next move. */
 	lastGloryDraw: { playerId: string; vp: number } | null;
+	/** Set when first player this era picks a History's Judgement card (so other players can see which card was picked). Cleared at start of next move. */
+	lastHistoryCardPickPlayerId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1622,6 +1624,178 @@ export function getPlayerRankings(G: GoldenAgesState): { playerId: string; score
 	return rankings;
 }
 
+/** When game is over and scored, return { winner } or { isDraw } for framework ctx.gameover. */
+function getGameOverResult(G: GoldenAgesState): { winner: string } | { isDraw: true } | undefined {
+	if (!G.endGameScored) return undefined;
+	const base = getPlayerRankings(G);
+	if (base.length === 0) return undefined;
+	const breakdown = G.endGameScoreBreakdown;
+	const hasValidBreakdown =
+		breakdown &&
+		Object.keys(breakdown).length > 0 &&
+		base.every((r) => (breakdown[r.playerId]?.length ?? 0) > 0);
+	const breakdownToUse = hasValidBreakdown ? breakdown! : computeEndGameBreakdown(G);
+	const totalByPlayer: Record<string, number> = {};
+	for (const r of base) {
+		const sum = (breakdownToUse[r.playerId] ?? []).reduce((s, e) => s + e.vp, 0);
+		totalByPlayer[r.playerId] = sum > 0 ? sum : r.score;
+	}
+	const sorted = [...base].sort(
+		(a, b) => (totalByPlayer[b.playerId] ?? 0) - (totalByPlayer[a.playerId] ?? 0) || b.cities - a.cities,
+	);
+	const first = sorted[0];
+	if (!first) return undefined;
+	const firstTotal = totalByPlayer[first.playerId] ?? 0;
+	const tiedForFirst = sorted.filter(
+		(r) => (totalByPlayer[r.playerId] ?? 0) === firstTotal && r.cities === first.cities,
+	);
+	if (tiedForFirst.length > 1) return { isDraw: true };
+	return { winner: first.playerId };
+}
+
+/** Compute end-game score breakdown from current state (read-only). Use when stored breakdown is missing (e.g. old saved games). */
+export function computeEndGameBreakdown(
+	G: GoldenAgesState,
+): Record<string, { label: string; vp: number }[]> {
+	const pids = Object.keys(G.players);
+	const breakdown: Record<string, { label: string; vp: number }[]> = {};
+	const endGameVpByPlayer: Record<string, number> = {};
+	for (const pid of pids) endGameVpByPlayer[pid] = 0;
+
+	// Future Tech: 8 VPs to sole leader per type
+	const ftTypes = new Set<string>();
+	for (const player of Object.values(G.players)) {
+		for (const card of player.hand) {
+			if (card.futureTechType) ftTypes.add(card.futureTechType);
+		}
+	}
+	for (const ftType of ftTypes) {
+		let bestCount = -1;
+		let bestPid: string | null = null;
+		let tied = false;
+		for (const pid of pids) {
+			const count = getFutureTechCount(G, pid, ftType);
+			if (count > bestCount) {
+				bestCount = count;
+				bestPid = pid;
+				tied = false;
+			} else if (count === bestCount) {
+				tied = true;
+			}
+		}
+		if (bestPid && !tied) {
+			endGameVpByPlayer[bestPid] += 8;
+		}
+	}
+
+	for (const [pid, player] of Object.entries(G.players)) {
+		const items: { label: string; vp: number }[] = [];
+
+		const goldVp = Math.floor(player.gold / 3);
+		if (goldVp) {
+			items.push({ label: 'Gold (1 VP per 3)', vp: goldVp });
+			endGameVpByPlayer[pid] += goldVp;
+		}
+
+		let techVp = 0;
+		for (const row of player.researchedTechs) {
+			for (let col = 2; col < row.length; col++) {
+				if (row[col] && TECH_BACKSIDE_VP[col]) techVp += TECH_BACKSIDE_VP[col];
+			}
+		}
+		if (techVp) {
+			items.push({ label: 'Tech levels (3–5)', vp: techVp });
+			endGameVpByPlayer[pid] += techVp;
+		}
+
+		let gloryVp = 0;
+		for (const val of player.gloryTokens) gloryVp += val;
+		if (gloryVp) {
+			items.push({ label: 'Glory tokens', vp: gloryVp });
+			endGameVpByPlayer[pid] += gloryVp;
+		}
+
+		// Future Tech: one entry per type this player won (matches performEndGameScoring format)
+		for (const ftType of ftTypes) {
+			let bestCount = -1;
+			let bestPid: string | null = null;
+			let tied = false;
+			for (const p of pids) {
+				const count = getFutureTechCount(G, p, ftType);
+				if (count > bestCount) {
+					bestCount = count;
+					bestPid = p;
+					tied = false;
+				} else if (count === bestCount) tied = true;
+			}
+			if (bestPid === pid && !tied) {
+				items.push({ label: `Future Tech: ${getFutureTechName(ftType)}`, vp: 8 });
+			}
+		}
+
+		if (hasWonder(player, 'spiralMinaret')) {
+			let spiralVp = 0;
+			for (const row of player.researchedTechs) {
+				if (row[3]) spiralVp += 2;
+				if (row[4]) spiralVp += 2;
+			}
+			if (spiralVp) {
+				items.push({ label: 'Spiral Minaret', vp: spiralVp });
+				endGameVpByPlayer[pid] += spiralVp;
+			}
+		}
+
+		let cultCardVp = 0;
+		for (const cultCard of player.cultCards ?? []) {
+			const spots = cultCard.card.cultSpots ?? 0;
+			const spread = spots - cultCard.remainingTokens;
+			cultCardVp += spread * (cultCard.card.cultSpotVP ?? 0);
+		}
+		if (cultCardVp) {
+			items.push({ label: 'Cult cards (spread tokens)', vp: cultCardVp });
+			endGameVpByPlayer[pid] += cultCardVp;
+		}
+
+		breakdown[pid] = items;
+	}
+
+	// Cult tokens on board (add to breakdown and to endGameVpByPlayer)
+	if (G.cultureBoard) {
+		for (const [cellKey, tokens] of Object.entries(G.cultureBoard.cultTokensOnBoard)) {
+			const [r, c] = cellKey.split(',').map(Number);
+			const controllers = new Set<string>();
+			for (const piece of G.pieces) {
+				if (
+					piece.row === r &&
+					piece.col === c &&
+					!piece.inAgora &&
+					(piece.type === 'worker' || piece.type === 'capital')
+				) {
+					controllers.add(piece.owner);
+				}
+			}
+			for (const city of G.cities) {
+				if (city.row === r && city.col === c) controllers.add(city.owner);
+			}
+			const vp = tokens.length;
+			for (const pid of controllers) {
+				if (vp) {
+					breakdown[pid].push({ label: 'Cult tokens on board', vp });
+					endGameVpByPlayer[pid] += vp;
+				}
+			}
+		}
+	}
+
+	// Prepend "Score during game" = final score - sum of end-game components (clamp so we never show negative when server score is stale)
+	for (const pid of pids) {
+		const scoreDuringGame = Math.max(0, G.players[pid].score - endGameVpByPlayer[pid]);
+		breakdown[pid].unshift({ label: 'Score during game', vp: scoreDuringGame });
+	}
+
+	return breakdown;
+}
+
 function hasWonder(player: GoldenAgesPlayerState, wonderType: string): boolean {
 	return (player.builtWonders ?? []).some((w) => w.wonderType === wonderType);
 }
@@ -2146,6 +2320,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			pendingCultFill: null,
 			pendingCultSpread: null,
 			lastGloryDraw: null,
+			lastHistoryCardPickPlayerId: null,
 		};
 
 		revealEraCards(state, ctx.numPlayers);
@@ -2209,6 +2384,8 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			anchorCol: number,
 			rotation: TileRotation,
 			moveCapital?: boolean,
+			capitalRow?: number,
+			capitalCol?: number,
 		) => {
 			if (G.phase !== 'tilePlacement') return INVALID_MOVE;
 
@@ -2241,8 +2418,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				}
 			}
 
-			const targetRow = anchorRow + rotated[0][0];
-			const targetCol = anchorCol + rotated[0][1];
+			const defaultTargetRow = anchorRow + rotated[0][0];
+			const defaultTargetCol = anchorCol + rotated[0][1];
+			const targetRow = moveCapital && capitalRow != null && capitalCol != null ? capitalRow : defaultTargetRow;
+			const targetCol = moveCapital && capitalRow != null && capitalCol != null ? capitalCol : defaultTargetCol;
 
 			if (G.currentEra === 'I') {
 				const cornerOffset = rotated[SMALL_L_CORNER_INDEX];
@@ -2287,6 +2466,11 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				tryTakeControl(G, ctx.currentPlayer, cornerRow, cornerCol);
 			} else if (moveCapital) {
+				// Validate that chosen cell is on the placed tile when capitalRow/capitalCol provided
+				const tileCellSet = new Set(coveredCells.map(([r, c]) => `${r},${c}`));
+				if (capitalRow != null && capitalCol != null && !tileCellSet.has(`${targetRow},${targetCol}`)) {
+					return INVALID_MOVE;
+				}
 				relocateCapital(G, ctx.currentPlayer, targetRow, targetCol);
 			}
 
@@ -2326,7 +2510,13 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			argD?: boolean,
 			argE?: string,
 		) => {
-			G.lastGloryDraw = null;
+			G.lastHistoryCardPickPlayerId = null;
+			// Clear glory reveal when another player moves (forced dismiss: only the drawer can dismiss on their turn)
+			if (G.lastGloryDraw && ctx.currentPlayer !== G.lastGloryDraw.playerId) {
+				G.lastGloryDraw = null;
+			}
+			// Current player must acknowledge their glory draw before any other action (force-dismiss dialog)
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (G.phase !== 'actions') return INVALID_MOVE;
 
 			const player = G.players[ctx.currentPlayer];
@@ -2864,6 +3054,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					const [card] = G.historyJudgementCards.splice(cardIdx, 1);
 					player.historyCards.push(card);
 					G.eraJudgementCard = card;
+					G.lastHistoryCardPickPlayerId = ctx.currentPlayer;
 				}
 
 				player.passedThisEra = true;
@@ -2929,6 +3120,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 		collectGoldenAgeIncome: (
 			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
 		) => {
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (G.phase !== 'actions') return INVALID_MOVE;
 
 			const player = G.players[ctx.currentPlayer];
@@ -2959,6 +3151,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
 			cardIndex: number,
 		) => {
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (!G.cultureBoard || G.pendingCulturePicks <= 0) return INVALID_MOVE;
 
 			const card = G.cultureBoard.cultureDisplay[cardIndex];
@@ -2977,7 +3170,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			slotIndex: number,
 			handCardIndex: number,
 		) => {
-			G.lastGloryDraw = null;
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (!G.cultureBoard) return INVALID_MOVE;
 
 			if (G.pendingCulturePicks > 0 || G.pendingCultFill || G.pendingCultSpread) return INVALID_MOVE;
@@ -3032,6 +3225,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
 			tokenTypes: number[],
 		) => {
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (!G.pendingCultFill) return INVALID_MOVE;
 
 			const player = G.players[ctx.currentPlayer];
@@ -3064,6 +3258,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			destRow: number,
 			destCol: number,
 		) => {
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (!G.pendingCultSpread || !G.cultureBoard) return INVALID_MOVE;
 
 			const player = G.players[ctx.currentPlayer];
@@ -3111,20 +3306,21 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 		},
 
 		skipCultSpread: (
-			{ G }: { G: GoldenAgesState; ctx: Ctx },
+			{ G, ctx }: { G: GoldenAgesState; ctx: Ctx },
 		) => {
+			if (G.lastGloryDraw && G.lastGloryDraw.playerId === ctx.currentPlayer) return INVALID_MOVE;
 			if (!G.pendingCultSpread) return INVALID_MOVE;
 			G.pendingCultSpread = null;
 		},
 	},
 
 	endIf: ({ G }: { G: GoldenAgesState }) => {
-		if (G.eraIVRemainingTurns === 0) {
-			return { gameOver: true };
-		}
-		if (G.currentEra === 'IV' && Object.values(G.players).every((p) => p.passedThisEra)) {
-			return { gameOver: true };
-		}
+		const gameOver =
+			G.eraIVRemainingTurns === 0 ||
+			(G.currentEra === 'IV' && Object.values(G.players).every((p) => p.passedThisEra));
+		if (!gameOver) return undefined;
+		// Return winner or draw so the UI shows "You win!" / "You lose." / "It's a draw." correctly
+		return getGameOverResult(G) ?? { isDraw: true };
 	},
 
 	turn: {

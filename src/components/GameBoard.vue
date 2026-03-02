@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted } from "vue";
+import confetti from "canvas-confetti";
 import { useGame, SquareGrid, getTileAt, rotateTileOffsets, type TileRotation } from "@engine/client";
 import {
 	IconChevronRight,
@@ -24,7 +25,7 @@ import {
 } from "@tabler/icons-vue";
 
 const props = withDefaults(defineProps<{ headerHeight?: number }>(), { headerHeight: 72 });
-// const emit = defineEmits<{ backToLobby: [] }>();
+defineEmits<{ backToLobby: [] }>();
 import {
 	// gameDef, // unused
 	ERA_TILE_SHAPES,
@@ -41,6 +42,7 @@ import {
 	getAttackCost,
 	INVASION_COSTS,
 	getPlayerRankings,
+	computeEndGameBreakdown,
 	WONDER_DEFS,
 	CULTURE_GRID_ROWS,
 	CULTURE_GRID_COLS,
@@ -204,6 +206,9 @@ const cellToAnchor = computed<Map<string, [number, number]>>(() => {
 const pendingPlacement = ref<{ anchor: [number, number]; rotation: TileRotation } | null>(null);
 
 function onCellClick(row: number, col: number) {
+	// Glory token reveal is modal: must dismiss before any other action
+	if (showGloryReveal.value) return;
+
 	// Spread cult: click valid destination after choosing card + token
 	if (pendingCultSpread.value && isMyTurn.value && spreadCultCardIndex.value !== null && spreadCultTokenType.value !== null) {
 		const key = `${row},${col}`;
@@ -269,6 +274,17 @@ function onCellClick(row: number, col: number) {
 		}
 	}
 
+	// Capital move: picking which square on the placed tile for the capital (multi-cell tile only)
+	if (
+		activePrompt.value === "capitalMove" &&
+		pendingPlacement.value &&
+		placementTileCellsForCapital.value.length > 1 &&
+		placementTileCellsSetForCapital.value.has(`${row},${col}`)
+	) {
+		confirmPlacementWithCapital(row, col);
+		return;
+	}
+
 	if (!isMyTurn.value || !isTilePlacement.value) return;
 	const key = `${row},${col}`;
 	const anchor = cellToAnchor.value.get(key);
@@ -288,6 +304,14 @@ function confirmPlacement(moveCapital: boolean) {
 	const { anchor, rotation: rot } = pendingPlacement.value;
 	pendingPlacement.value = null;
 	move("placeTile", anchor[0], anchor[1], rot, moveCapital);
+	hoverAnchor.value = null;
+}
+
+function confirmPlacementWithCapital(capitalRow: number, capitalCol: number) {
+	if (!pendingPlacement.value) return;
+	const { anchor, rotation: rot } = pendingPlacement.value;
+	pendingPlacement.value = null;
+	move("placeTile", anchor[0], anchor[1], rot, true, capitalRow, capitalCol);
 	hoverAnchor.value = null;
 }
 
@@ -334,6 +358,22 @@ const previewShapeBounds = computed(() => {
 const previewShapeSet = computed(() => {
 	const set = new Set<string>();
 	for (const [r, c] of previewShapeOffsets.value) {
+		set.add(`${r},${c}`);
+	}
+	return set;
+});
+
+/** When pending placement is set, the tile cells that would be covered (for capital pick when moving capital). */
+const placementTileCellsForCapital = computed<[number, number][]>(() => {
+	const p = pendingPlacement.value;
+	if (!p || !currentShape.value) return [];
+	const rotated = rotateTileOffsets(currentShape.value.offsets, p.rotation);
+	return rotated.map(([dr, dc]) => [p.anchor[0] + dr, p.anchor[1] + dc] as [number, number]);
+});
+
+const placementTileCellsSetForCapital = computed(() => {
+	const set = new Set<string>();
+	for (const [r, c] of placementTileCellsForCapital.value) {
 		set.add(`${r},${c}`);
 	}
 	return set;
@@ -538,6 +578,13 @@ const CUBE_BG_CLASSES: Record<PlayerColor, string> = {
 function cellHasPointer(row: number, col: number): boolean {
 	const key = `${row},${col}`;
 
+	if (
+		pendingPlacement.value &&
+		placementTileCellsForCapital.value.length > 1 &&
+		placementTileCellsSetForCapital.value.has(key)
+	)
+		return true;
+
 	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key) && canAffordAttackAtCell(row, col)) return true;
 	if (soldierPhase.value === "selectWorker" && piecesAt(row, col).some((p) => p.type === "worker" && p.owner === playerID.value && !p.exhausted))
 		return true;
@@ -571,6 +618,15 @@ function cellHasPointer(row: number, col: number): boolean {
 
 function cellClasses(row: number, col: number): string {
 	const key = `${row},${col}`;
+
+	// Capital move: highlight tile cells to pick for capital (when tile has more than one square)
+	if (
+		pendingPlacement.value &&
+		placementTileCellsForCapital.value.length > 1 &&
+		placementTileCellsSetForCapital.value.has(key)
+	) {
+		return "bg-amber-500/25 border-2 border-amber-400/60 hover:bg-amber-500/40 cursor-pointer";
+	}
 
 	// Spread cult: highlight valid destinations
 	if (
@@ -708,53 +764,31 @@ const gameIsOver = computed(() => G.value?.endGameScored === true);
 
 const finalRankings = computed(() => {
 	if (!gameIsOver.value || !G.value) return [];
-	return getPlayerRankings(G.value);
+	const base = getPlayerRankings(G.value);
+	if (base.length === 0) return [];
+	// Use breakdown sum for score/order so ranking is correct when G.players[pid].score is stale
+	const breakdown = G.value.endGameScoreBreakdown;
+	const hasValidBreakdown =
+		breakdown &&
+		Object.keys(breakdown).length > 0 &&
+		base.every((r) => (breakdown[r.playerId]?.length ?? 0) > 0);
+	const breakdownToUse = hasValidBreakdown ? breakdown : computeEndGameBreakdown(G.value);
+	const totalByPlayer: Record<string, number> = {};
+	for (const r of base) {
+		const sum = (breakdownToUse[r.playerId] ?? []).reduce((s, e) => s + e.vp, 0);
+		totalByPlayer[r.playerId] = sum > 0 ? sum : r.score;
+	}
+	return base
+		.map((r) => ({ ...r, score: totalByPlayer[r.playerId] ?? r.score }))
+		.sort((a, b) => b.score - a.score || b.cities - a.cities);
 });
 
-// End game: reveal scores one-by-one in fixed order (by playerId) so winner is a surprise
-const playersInRevealOrder = computed(() => {
-	if (!G.value?.players) return [];
-	const order = Object.keys(G.value.players).sort();
-	return order.map((pid) => {
-		const cityCount = G.value?.cities.filter((c) => c.owner === pid).length ?? 0;
-		return { playerId: pid, score: G.value?.players?.[pid]?.score ?? 0, cities: cityCount };
-	});
+const isWinningPlayer = computed(() => {
+	const pid = playerID?.value;
+	const rankings = finalRankings.value;
+	if (!pid || !rankings.length) return false;
+	return String(rankings[0].playerId) === String(pid);
 });
-const revealedScoresCount = ref(0);
-let revealInterval: ReturnType<typeof setInterval> | null = null;
-
-watch(
-	() => gameIsOver.value && !gameOverDismissed.value,
-	(isShowing) => {
-		if (!isShowing) {
-			revealedScoresCount.value = 0;
-			if (revealInterval) {
-				clearInterval(revealInterval);
-				revealInterval = null;
-			}
-			return;
-		}
-		revealedScoresCount.value = 0;
-		const total = playersInRevealOrder.value.length;
-		if (total === 0) return;
-		if (revealInterval) clearInterval(revealInterval);
-		revealInterval = setInterval(() => {
-			revealedScoresCount.value += 1;
-			if (revealedScoresCount.value >= total) {
-				if (revealInterval) clearInterval(revealInterval);
-				revealInterval = null;
-			}
-		}, 1400);
-	},
-	{ immediate: true }
-);
-onUnmounted(() => {
-	if (revealInterval) clearInterval(revealInterval);
-});
-
-const allScoresRevealed = computed(
-	() => playersInRevealOrder.value.length > 0 && revealedScoresCount.value >= playersInRevealOrder.value.length
-);
 
 // Final score table: one row per category, one column per player (base game + expansion categories)
 const SCORE_CATEGORY_ORDER = [
@@ -769,9 +803,18 @@ const SCORE_CATEGORY_ORDER = [
 ] as const;
 
 const finalScoreTableRows = computed(() => {
-	if (!G.value?.endGameScoreBreakdown || !finalRankings.value.length) return [];
-	const breakdown = G.value.endGameScoreBreakdown;
+	if (!gameIsOver.value || !G.value || !finalRankings.value.length) return [];
 	const playerIds = finalRankings.value.map((r) => r.playerId);
+	const breakdown = G.value.endGameScoreBreakdown;
+
+	// Fallback when breakdown is missing (e.g. saved game): compute from current state so we still show every category row + total
+	const hasValidBreakdown =
+		breakdown &&
+		Object.keys(breakdown).length > 0 &&
+		playerIds.every((pid) => (breakdown[pid]?.length ?? 0) > 0);
+
+	const breakdownToUse = hasValidBreakdown ? breakdown : computeEndGameBreakdown(G.value);
+
 	const rows: { label: string; vpsByPlayer: Record<string, number> }[] = [];
 
 	// Future Tech: sum all "Future Tech: X" entries per player into one row
@@ -779,7 +822,7 @@ const finalScoreTableRows = computed(() => {
 	for (const pid of playerIds) futureTechVps[pid] = 0;
 	let hasFutureTech = false;
 	for (const pid of playerIds) {
-		for (const item of breakdown[pid] ?? []) {
+		for (const item of breakdownToUse[pid] ?? []) {
 			if (item.label.startsWith("Future Tech:")) {
 				futureTechVps[pid] += item.vp;
 				hasFutureTech = true;
@@ -796,7 +839,7 @@ const finalScoreTableRows = computed(() => {
 		const vpsByPlayer: Record<string, number> = {};
 		let hasAny = false;
 		for (const pid of playerIds) {
-			const item = (breakdown[pid] ?? []).find((e) => e.label === category);
+			const item = (breakdownToUse[pid] ?? []).find((e) => e.label === category);
 			const vp = item?.vp ?? 0;
 			vpsByPlayer[pid] = vp;
 			if (vp !== 0) hasAny = true;
@@ -807,91 +850,208 @@ const finalScoreTableRows = computed(() => {
 		}
 	}
 
-	// Final score row
+	// Final score row: sum breakdown; if sum is 0 fall back to G.players[pid].score so we always show something
 	const totalByPlayer: Record<string, number> = {};
-	for (const r of finalRankings.value) totalByPlayer[r.playerId] = r.score;
+	for (const pid of playerIds) {
+		const sum = (breakdownToUse[pid] ?? []).reduce((s, e) => s + e.vp, 0);
+		const rawScore = G.value.players[pid]?.score ?? 0;
+		totalByPlayer[pid] = sum > 0 ? sum : rawScore;
+	}
 	rows.push({ label: "Final score", vpsByPlayer: totalByPlayer });
 	return rows;
 });
 
-// Score table count-up animation: one cell at a time, value rolls from 0 to target
+// Score table count-up: one cell at a time using setInterval (reliable; no RAF)
 const scoreRevealCurrentIndex = ref(0);
 const scoreRevealDisplayValue = ref(0);
 const scoreTableRevealComplete = ref(false);
+const gameOverTableComplete = computed(() => scoreTableRevealComplete.value);
+const SCORE_CELL_TICK_MS = 50;
 const SCORE_CELL_DURATION_MS = 420;
-const SCORE_CELL_MIN_MS = 180;
-const SCORE_CELL_MAX_MS = 700;
 
 function getScoreCellIndex(rowIdx: number, colIdx: number): number {
 	return rowIdx * finalRankings.value.length + colIdx;
 }
 
-let scoreRevealRaf = 0;
-let scoreRevealStartTime = 0;
+let scoreRevealIntervalId: ReturnType<typeof setInterval> | null = null;
+let scoreRevealSafetyTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let scoreRevealProgress = 0; // 0..1 within current cell
 
-function tickScoreReveal(timestamp: number) {
-	if (!scoreRevealStartTime) scoreRevealStartTime = timestamp;
-	const elapsed = timestamp - scoreRevealStartTime;
+function getCurrentCellTarget(): number {
+	const rows = finalScoreTableRows.value;
+	const numPlayers = finalRankings.value.length;
+	const idx = scoreRevealCurrentIndex.value;
+	if (idx >= rows.length * numPlayers) return 0;
+	const rowIdx = Math.floor(idx / numPlayers);
+	const colIdx = idx % numPlayers;
+	const pid = finalRankings.value[colIdx]?.playerId ?? "";
+	return rows[rowIdx]?.vpsByPlayer[pid] ?? 0;
+}
+
+function tickScoreRevealInterval() {
 	const rows = finalScoreTableRows.value;
 	const numPlayers = finalRankings.value.length;
 	const totalCells = rows.length * numPlayers;
-	const currentIdx = scoreRevealCurrentIndex.value;
-	if (currentIdx >= totalCells) {
+	const idx = scoreRevealCurrentIndex.value;
+
+	if (idx >= totalCells) {
+		if (scoreRevealIntervalId) {
+			clearInterval(scoreRevealIntervalId);
+			scoreRevealIntervalId = null;
+		}
+		if (scoreRevealSafetyTimeoutId) {
+			clearTimeout(scoreRevealSafetyTimeoutId);
+			scoreRevealSafetyTimeoutId = null;
+		}
 		scoreTableRevealComplete.value = true;
+		console.log("[Game Over] score reveal complete");
 		return;
 	}
-	const rowIdx = Math.floor(currentIdx / numPlayers);
-	const colIdx = currentIdx % numPlayers;
-	const targetValue = rows[rowIdx]?.vpsByPlayer[finalRankings.value[colIdx]?.playerId ?? ""] ?? 0;
-	// Ease-out: fast start, slow finish (duration scales slightly with value for big numbers)
-	const duration = Math.min(
-		SCORE_CELL_MAX_MS,
-		Math.max(SCORE_CELL_MIN_MS, SCORE_CELL_DURATION_MS + targetValue * 12)
-	);
-	const progress = Math.min(1, elapsed / duration);
-	const easeOut = 1 - (1 - progress) * (1 - progress);
-	scoreRevealDisplayValue.value = Math.round(easeOut * targetValue);
-	if (progress >= 1) {
-		scoreRevealCurrentIndex.value = currentIdx + 1;
-		scoreRevealStartTime = timestamp;
+
+	const targetValue = getCurrentCellTarget();
+	// Progress within current cell (0..1); advance by tick/duration
+	const duration = Math.max(300, SCORE_CELL_DURATION_MS + targetValue * 8);
+	scoreRevealProgress += SCORE_CELL_TICK_MS / duration;
+
+	if (scoreRevealProgress >= 1) {
+		// Move to next cell
+		scoreRevealProgress = 0;
+		scoreRevealCurrentIndex.value = idx + 1;
 		scoreRevealDisplayValue.value = 0;
-		if (currentIdx + 1 < totalCells) {
-			scoreRevealRaf = requestAnimationFrame(tickScoreReveal);
-		} else {
+		console.log("[Game Over] score reveal cell", idx + 1, "/", totalCells);
+		if (idx + 1 >= totalCells) {
+			if (scoreRevealIntervalId) {
+				clearInterval(scoreRevealIntervalId);
+				scoreRevealIntervalId = null;
+			}
+			if (scoreRevealSafetyTimeoutId) {
+				clearTimeout(scoreRevealSafetyTimeoutId);
+				scoreRevealSafetyTimeoutId = null;
+			}
 			scoreTableRevealComplete.value = true;
+			console.log("[Game Over] score reveal complete (last cell)");
+			return;
 		}
 		return;
 	}
-	scoreRevealRaf = requestAnimationFrame(tickScoreReveal);
+
+	// Ease-out for current cell
+	const easeOut = 1 - (1 - scoreRevealProgress) * (1 - scoreRevealProgress);
+	scoreRevealDisplayValue.value = Math.round(easeOut * targetValue);
 }
 
 function startScoreTableReveal() {
+	if (scoreRevealIntervalId) {
+		clearInterval(scoreRevealIntervalId);
+		scoreRevealIntervalId = null;
+	}
 	scoreRevealCurrentIndex.value = 0;
 	scoreRevealDisplayValue.value = 0;
 	scoreTableRevealComplete.value = false;
-	scoreRevealStartTime = 0;
-	if (finalScoreTableRows.value.length && finalRankings.value.length) {
-		scoreRevealRaf = requestAnimationFrame(tickScoreReveal);
-	} else {
+	scoreRevealProgress = 0;
+
+	const rows = finalScoreTableRows.value;
+	const numPlayers = finalRankings.value.length;
+	if (!rows.length || !numPlayers) {
 		scoreTableRevealComplete.value = true;
+		console.log("[Game Over] score reveal skipped (no rows/players)");
+		return;
 	}
+	const totalCells = rows.length * numPlayers;
+	console.log("[Game Over] score reveal start, cells:", totalCells);
+
+	// Safety: force complete after 15s
+	scoreRevealSafetyTimeoutId = setTimeout(() => {
+		if (!scoreTableRevealComplete.value) {
+			console.warn("[Game Over] score reveal safety timeout (15s)");
+			scoreTableRevealComplete.value = true;
+			if (scoreRevealIntervalId) {
+				clearInterval(scoreRevealIntervalId);
+				scoreRevealIntervalId = null;
+			}
+		}
+		scoreRevealSafetyTimeoutId = null;
+	}, 15000);
+
+	scoreRevealIntervalId = setInterval(tickScoreRevealInterval, SCORE_CELL_TICK_MS);
 }
 
 watch(
-	[allScoresRevealed, () => gameOverDismissed.value],
-	([revealed, dismissed]) => {
-		if (!revealed || dismissed) return;
-		// Small delay so the table is visible before numbers start counting
+	() => gameIsOver.value && !gameOverDismissed.value,
+	(showing) => {
+		console.log("[Game Over] watch fired, showing:", showing);
+		if (!showing) {
+			if (scoreRevealIntervalId) {
+				clearInterval(scoreRevealIntervalId);
+				scoreRevealIntervalId = null;
+			}
+			if (scoreRevealSafetyTimeoutId) {
+				clearTimeout(scoreRevealSafetyTimeoutId);
+				scoreRevealSafetyTimeoutId = null;
+			}
+			return;
+		}
+		// Start after a short delay so card entrance can start
+		console.log("[Game Over] overlay visible, starting reveal in 400ms");
 		const t = setTimeout(() => {
+			console.log("[Game Over] calling startScoreTableReveal");
 			startScoreTableReveal();
-		}, 320);
-		return () => clearTimeout(t);
-	}
+		}, 400);
+		return () => {
+			console.log("[Game Over] watch cleanup");
+			clearTimeout(t);
+		};
+	},
+	{ immediate: true, flush: 'post' }
 );
 
 onUnmounted(() => {
-	if (scoreRevealRaf) cancelAnimationFrame(scoreRevealRaf);
+	if (scoreRevealIntervalId) clearInterval(scoreRevealIntervalId);
+	if (scoreRevealSafetyTimeoutId) clearTimeout(scoreRevealSafetyTimeoutId);
 });
+
+const confettiFiredForGameOver = ref(false);
+watch(
+	() =>
+		gameIsOver.value &&
+		!gameOverDismissed.value &&
+		isWinningPlayer.value &&
+		scoreTableRevealComplete.value,
+	(showConfetti) => {
+		if (!showConfetti) {
+			confettiFiredForGameOver.value = false;
+			return;
+		}
+		if (confettiFiredForGameOver.value) return;
+		confettiFiredForGameOver.value = true;
+		const winnerId = finalRankings.value[0]?.playerId;
+		const playerColor = winnerId && G.value?.players[winnerId]?.color;
+		const confettiColors = playerColor
+			? [PLAYER_COLOR_HEX[playerColor] ?? "#94a3b8"]
+			: ["#eab308"];
+		const duration = 3000;
+		const end = Date.now() + duration;
+		const frame = () => {
+			confetti({
+				particleCount: 3,
+				angle: 60,
+				spread: 55,
+				origin: { x: 0 },
+				colors: confettiColors,
+			});
+			confetti({
+				particleCount: 3,
+				angle: 120,
+				spread: 55,
+				origin: { x: 1 },
+				colors: confettiColors,
+			});
+			if (Date.now() < end) requestAnimationFrame(frame);
+		};
+		frame();
+	},
+	{ immediate: true }
+);
 
 // ---------------------------------------------------------------------------
 // Card deck display (only Wonder and Building remain)
@@ -2359,13 +2519,65 @@ watch(activePrompt, (newVal) => {
 });
 
 // Glory token just drawn — show reveal animation for current player only
-const showGloryReveal = computed(
-	() =>
-		!!playerID &&
-		!!G.value?.lastGloryDraw &&
-		G.value.lastGloryDraw.playerId === playerID,
-);
+const showGloryReveal = computed(() => {
+	const draw = G.value?.lastGloryDraw;
+	if (!draw) return false;
+	const pid = playerID?.value;
+	// Match drawer (use == so string "0" and number 0 both match)
+	return pid != null && String(draw.playerId) === String(pid);
+});
 const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
+
+// History's Judgement card just picked (first golden age) — show to other players so they can see which card was picked.
+// Use lastHistoryCardPickPlayerId when set (new games); for existing games saved before this feature, infer picker from who has the card in historyCards.
+const historyCardPickerId = computed(() => {
+	const g = G.value;
+	const card = g?.eraJudgementCard;
+	if (!g?.players || !card) return null;
+	if (g.lastHistoryCardPickPlayerId != null) return g.lastHistoryCardPickPlayerId;
+	for (const [pid, player] of Object.entries(g.players)) {
+		if (player.historyCards?.some((c) => c.id === card.id)) return pid;
+	}
+	return null;
+});
+const showHistoryCardReveal = computed(
+	() =>
+		!!playerID?.value &&
+		!!G.value?.eraJudgementCard &&
+		historyCardPickerId.value != null &&
+		historyCardPickerId.value !== playerID.value,
+);
+const revealedHistoryCard = computed(() => G.value?.eraJudgementCard ?? null);
+const historyCardRevealDismissed = ref(false);
+let historyCardRevealAutoDismissTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(showHistoryCardReveal, (show) => {
+	if (historyCardRevealAutoDismissTimer) {
+		clearTimeout(historyCardRevealAutoDismissTimer);
+		historyCardRevealAutoDismissTimer = null;
+	}
+	if (show) {
+		historyCardRevealDismissed.value = false;
+		historyCardRevealAutoDismissTimer = setTimeout(() => {
+			historyCardRevealDismissed.value = true;
+			historyCardRevealAutoDismissTimer = null;
+		}, 5000);
+	}
+});
+
+function dismissHistoryCardReveal() {
+	if (historyCardRevealAutoDismissTimer) {
+		clearTimeout(historyCardRevealAutoDismissTimer);
+		historyCardRevealAutoDismissTimer = null;
+	}
+	historyCardRevealDismissed.value = true;
+}
+
+onUnmounted(() => {
+	if (historyCardRevealAutoDismissTimer) {
+		clearTimeout(historyCardRevealAutoDismissTimer);
+	}
+});
 </script>
 
 <template>
@@ -2442,27 +2654,46 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 			<div class="max-w-5xl mx-auto px-3 md:px-6 py-2 md:py-3 flex flex-wrap items-center justify-center gap-2 md:gap-4">
 				<!-- Capital relocation (your capital only; opponent pieces on covered cells are returned automatically) -->
 				<template v-if="activePrompt === 'capitalMove'">
-					<p class="text-xs md:text-sm text-slate-200 font-medium">
-						Relocate your capital to this tile? (Workers at your capital move with it.)
-					</p>
-					<button
-						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
-						@click="confirmPlacement(true)"
-					>
-						Yes, move capital
-					</button>
-					<button
-						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
-						@click="confirmPlacement(false)"
-					>
-						No, keep it
-					</button>
-					<button
-						class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-						@click="cancelPlacement"
-					>
-						Cancel
-					</button>
+					<template v-if="placementTileCellsForCapital.length > 1">
+						<p class="text-xs md:text-sm text-slate-200 font-medium">
+							Choose a square on the tile for your capital (click a highlighted cell on the board).
+						</p>
+						<button
+							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+							@click="confirmPlacement(false)"
+						>
+							No, keep capital
+						</button>
+						<button
+							class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+							@click="cancelPlacement"
+						>
+							Cancel
+						</button>
+					</template>
+					<template v-else>
+						<p class="text-xs md:text-sm text-slate-200 font-medium">
+							Relocate your capital to this tile? (Workers at your capital move with it.)
+						</p>
+						<button
+							class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+							@click="confirmPlacement(true)"
+						>
+							Yes, move capital
+						</button>
+						<button
+							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+							@click="confirmPlacement(false)"
+						>
+							No, keep it
+						</button>
+						<button
+							class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+							@click="cancelPlacement"
+						>
+							Cancel
+						</button>
+					</template>
 				</template>
 
 				<!-- City founding -->
@@ -2591,7 +2822,12 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 				<!-- Golden Age only option info -->
 				<template v-else-if="activePrompt === 'goldenAgeOnly'">
 					<p class="text-xs md:text-sm text-slate-200 font-medium">
-						Your only available action is to start a Golden Age.
+						<template v-if="currentEra === 'IV'">
+							You have no more actions left. Taking the Golden Age action will end your game.
+						</template>
+						<template v-else>
+							Your only available action is to start a Golden Age.
+						</template>
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
@@ -2669,15 +2905,17 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 		</div>
 	</Teleport>
 
-	<!-- Glory token reveal overlay (current player only) -->
+	<!-- Glory token reveal overlay (current player only; z-[90], force dismiss via Continue only) -->
 	<Teleport to="body">
 		<Transition name="glory-reveal">
 			<div
 				v-if="showGloryReveal"
-				class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-				@click.self="move('acknowledgeGloryDraw')"
+				class="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm"
 			>
-				<div class="glory-reveal-card flex flex-col items-center gap-6 p-8 rounded-2xl bg-gradient-to-b from-amber-900/95 to-amber-950/95 border-2 border-amber-500/60 shadow-2xl shadow-amber-900/50">
+				<div
+					class="glory-reveal-card flex flex-col items-center gap-6 p-8 rounded-2xl bg-gradient-to-b from-amber-900/95 to-amber-950/95 border-2 border-amber-500/60 shadow-2xl shadow-amber-900/50"
+					@click.stop
+				>
 					<p class="text-amber-200/90 text-sm font-medium uppercase tracking-wider">
 						Glory token drawn
 					</p>
@@ -2690,6 +2928,41 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 						@click="move('acknowledgeGloryDraw')"
 					>
 						Continue
+					</button>
+				</div>
+			</div>
+		</Transition>
+	</Teleport>
+
+	<!-- History's Judgement card reveal (for other players when someone picks on first golden age) -->
+	<Teleport to="body">
+		<Transition name="glory-reveal">
+			<div
+				v-if="showHistoryCardReveal && !historyCardRevealDismissed && revealedHistoryCard"
+				class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+				@click.self="dismissHistoryCardReveal"
+			>
+				<div class="glory-reveal-card flex flex-col items-center gap-6 p-8 rounded-2xl bg-gradient-to-b from-amber-900/95 to-amber-950/95 border-2 border-amber-500/60 shadow-2xl shadow-amber-900/50">
+					<p class="text-amber-200/90 text-sm font-medium uppercase tracking-wider">
+						History's Judgement card picked
+					</p>
+					<div class="w-[180px] rounded-lg border-2 border-gray-500 bg-gray-700 p-4 flex flex-col gap-2 text-left">
+						<div class="text-amber-300 font-bold leading-tight text-sm">
+							{{ revealedHistoryCard.name }}
+						</div>
+						<div class="text-gray-300 leading-tight text-xs">
+							{{ revealedHistoryCard.description }}
+						</div>
+						<div class="text-gray-500 text-xs mt-1">
+							Judgement
+						</div>
+					</div>
+					<button
+						type="button"
+						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
+						@click="dismissHistoryCardReveal"
+					>
+						Dismiss
 					</button>
 				</div>
 			</div>
@@ -4310,78 +4583,21 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 		</div>
 	</div>
 
-	<!-- Game Over overlay: reveal scores one-by-one, then show final standings -->
-	<div
-		v-if="gameIsOver && !gameOverDismissed"
-		class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center"
-	>
-		<div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4">
+	<!-- Game Over overlay: final standings table (z-[100] so it stays above other overlays and buttons are clickable) -->
+	<Transition name="game-over">
+		<div
+			v-if="gameIsOver && !gameOverDismissed"
+			class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center"
+		>
+			<div class="game-over-card bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4">
 			<h2 class="text-2xl font-bold text-amber-300 text-center mb-2">
 				Game Over
 			</h2>
-			<p
-				v-if="!allScoresRevealed"
-				class="text-slate-400 text-sm text-center mb-6"
-			>
-				Revealing scores…
-			</p>
-			<p
-				v-else
-				class="text-amber-200/90 text-sm text-center mb-6 font-medium"
-			>
+			<p class="text-amber-200/90 text-sm text-center mb-6 font-medium">
 				Final standings
 			</p>
 
-			<!-- Phase 1: reveal order — one score at a time -->
-			<div
-				v-if="!allScoresRevealed"
-				class="space-y-3"
-			>
-				<div
-					v-for="(r, idx) in playersInRevealOrder"
-					:key="r.playerId"
-					class="flex items-center gap-3 p-3 rounded-lg transition-all duration-300"
-					:class="idx < revealedScoresCount ? 'bg-slate-700/60 border border-slate-500/40' : 'bg-slate-800/60 border border-slate-600/20'"
-				>
-					<span class="text-lg font-bold w-7 text-center text-slate-500">{{ idx + 1 }}</span>
-					<div
-						class="w-4 h-4 rounded-full shrink-0"
-						:class="PLAYER_COLOR_CLASSES[G!.players[r.playerId].color]"
-					/>
-					<span
-						class="font-medium capitalize flex-1"
-						:class="PLAYER_COLOR_TEXT[G!.players[r.playerId].color]"
-					>
-						{{ G!.players[r.playerId].color }}
-					</span>
-					<div class="text-right min-w-[100px]">
-						<Transition
-							name="score-reveal"
-							mode="out-in"
-						>
-							<span
-								v-if="idx < revealedScoresCount"
-								key="score"
-								class="text-lg font-bold text-slate-200 tabular-nums"
-							>
-								{{ r.score }} VP
-								<span class="text-xs text-slate-500 ml-1 font-normal">({{ r.cities }} cities)</span>
-							</span>
-							<span
-								v-else
-								key="hidden"
-								class="text-slate-500 text-lg"
-							>—</span>
-						</Transition>
-					</div>
-				</div>
-			</div>
-
-			<!-- Phase 2: score table — one row per category, one column per player -->
-			<div
-				v-else
-				class="overflow-x-auto"
-			>
+			<div class="overflow-x-auto">
 				<table class="w-full text-sm border-collapse min-w-[320px]">
 					<thead>
 						<tr class="border-b border-slate-600">
@@ -4419,19 +4635,22 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 								class="py-1.5 px-2 text-center tabular-nums transition-all duration-150 rounded"
 								:class="[
 									row.label === 'Final score' ? 'text-amber-200 font-bold' : 'text-slate-200',
-									getScoreCellIndex(rowIdx, colIdx) === scoreRevealCurrentIndex && !scoreTableRevealComplete
+									getScoreCellIndex(rowIdx, colIdx) === scoreRevealCurrentIndex && !gameOverTableComplete
 										? 'score-cell-active bg-amber-500/25 text-amber-100'
 										: '',
 								]"
 							>
-								<template v-if="getScoreCellIndex(rowIdx, colIdx) < scoreRevealCurrentIndex">
+								<template v-if="gameOverTableComplete">
 									{{ row.vpsByPlayer[r.playerId] ?? 0 }}
 								</template>
-								<template v-else-if="getScoreCellIndex(rowIdx, colIdx) === scoreRevealCurrentIndex && !scoreTableRevealComplete">
+								<template v-else-if="getScoreCellIndex(rowIdx, colIdx) < scoreRevealCurrentIndex">
+									{{ row.vpsByPlayer[r.playerId] ?? 0 }}
+								</template>
+								<template v-else-if="getScoreCellIndex(rowIdx, colIdx) === scoreRevealCurrentIndex">
 									{{ scoreRevealDisplayValue }}
 								</template>
 								<template v-else>
-									{{ scoreTableRevealComplete ? (row.vpsByPlayer[r.playerId] ?? 0) : 0 }}
+									0
 								</template>
 							</td>
 						</tr>
@@ -4444,12 +4663,14 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 
 			<div class="flex justify-center gap-3 mt-6">
 				<button
+					type="button"
 					class="px-5 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-medium transition-colors cursor-pointer"
 					@click="$emit('backToLobby')"
 				>
 					Back to Lobby
 				</button>
 				<button
+					type="button"
 					class="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium transition-colors cursor-pointer"
 					@click="gameOverDismissed = true"
 				>
@@ -4458,6 +4679,7 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 			</div>
 		</div>
 	</div>
+	</Transition>
 </template>
 
 <style scoped>
@@ -4514,6 +4736,35 @@ const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
 	from {
 		opacity: 0;
 		transform: scale(0.3);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+/* Game Over overlay: fade-in backdrop + scale-in card */
+.game-over-enter-active {
+	transition: opacity 0.35s ease-out;
+}
+.game-over-leave-active {
+	transition: opacity 0.25s ease-in;
+}
+.game-over-enter-from,
+.game-over-leave-to {
+	opacity: 0;
+}
+.game-over-enter-active .game-over-card {
+	animation: game-over-card-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.game-over-enter-from .game-over-card {
+	opacity: 0;
+	transform: scale(0.9);
+}
+@keyframes game-over-card-in {
+	from {
+		opacity: 0;
+		transform: scale(0.9);
 	}
 	to {
 		opacity: 1;
