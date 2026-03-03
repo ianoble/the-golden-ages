@@ -780,7 +780,7 @@ const ERA_COUNTS: Record<string, Record<Era, number>> = {
 };
 
 const SMALL_L = defineTileShape('SmallL', [[0, 0], [1, 0], [1, 1]], 'Small L');
-const SINGLE_1X1 = defineTileShape('1x1', [[0, 0]], '1x1');
+const _SINGLE_1X1 = defineTileShape('1x1', [[0, 0]], '1x1'); // eslint-disable-line @typescript-eslint/no-unused-vars
 /** Index of the corner cell in SMALL_L offsets (the cell connecting both arms). */
 const SMALL_L_CORNER_INDEX = 1;
 
@@ -1634,7 +1634,7 @@ function getGameOverResult(G: GoldenAgesState): { winner: string } | { isDraw: t
 		breakdown &&
 		Object.keys(breakdown).length > 0 &&
 		base.every((r) => (breakdown[r.playerId]?.length ?? 0) > 0);
-	const breakdownToUse = hasValidBreakdown ? breakdown! : computeEndGameBreakdown(G);
+	const breakdownToUse = hasValidBreakdown ? (breakdown as Record<string, { label: string; vp: number }[]>) : computeEndGameBreakdown(G);
 	const totalByPlayer: Record<string, number> = {};
 	for (const r of base) {
 		const sum = (breakdownToUse[r.playerId] ?? []).reduce((s, e) => s + e.vp, 0);
@@ -1801,11 +1801,11 @@ function hasWonder(player: GoldenAgesPlayerState, wonderType: string): boolean {
 }
 
 function hasProgress(player: GoldenAgesPlayerState, type: string): boolean {
-	return (player.progressCards ?? []).some((c) => c.type === type);
+	return (player.progressCards ?? []).some((c) => c.id?.includes(type));
 }
 
 function hasGovernment(player: GoldenAgesPlayerState, type: string): boolean {
-	return player.governmentCard?.type === type;
+	return player.governmentCard?.id?.includes(type) ?? false;
 }
 
 function researchFreeTech(G: GoldenAgesState, player: GoldenAgesPlayerState, row: number, col: number): void {
@@ -2387,9 +2387,6 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			capitalRow?: number,
 			capitalCol?: number,
 		) => {
-			// DEBUG: log all received arguments
-			console.log('[placeTile] args:', { anchorRow, anchorCol, rotation, moveCapital, capitalRow, capitalCol });
-
 			if (G.phase !== 'tilePlacement') return INVALID_MOVE;
 
 			const shape = ERA_TILE_SHAPES[G.currentEra];
@@ -2420,12 +2417,6 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					G.boardEdges[key] = rotateCellEdges(tileEdges[idx], rotation);
 				}
 			}
-
-			const defaultTargetRow = anchorRow + rotated[0][0];
-			const defaultTargetCol = anchorCol + rotated[0][1];
-			const targetRow = moveCapital && capitalRow != null && capitalCol != null ? capitalRow : defaultTargetRow;
-			const targetCol = moveCapital && capitalRow != null && capitalCol != null ? capitalCol : defaultTargetCol;
-			console.log('[placeTile] capital target:', { defaultTargetRow, defaultTargetCol, targetRow, targetCol, coveredCells });
 
 			if (G.currentEra === 'I') {
 				const cornerOffset = rotated[SMALL_L_CORNER_INDEX];
@@ -2470,12 +2461,12 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				tryTakeControl(G, ctx.currentPlayer, cornerRow, cornerCol);
 			} else if (moveCapital) {
-				// Validate that chosen cell is on the placed tile when capitalRow/capitalCol provided
+				if (capitalRow == null || capitalCol == null) return INVALID_MOVE;
 				const tileCellSet = new Set(coveredCells.map(([r, c]) => `${r},${c}`));
-				if (capitalRow != null && capitalCol != null && !tileCellSet.has(`${targetRow},${targetCol}`)) {
+				if (!tileCellSet.has(`${capitalRow},${capitalCol}`)) {
 					return INVALID_MOVE;
 				}
-				relocateCapital(G, ctx.currentPlayer, targetRow, targetCol);
+				relocateCapital(G, ctx.currentPlayer, capitalRow, capitalCol);
 			}
 
 			if (G.currentEra !== 'I') {
@@ -2705,23 +2696,23 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					const isChina = G.activeCivCard[ctx.currentPlayer]?.civType === 'china';
 					const isFeudalism = hasGovernment(player, 'feudalism');
 					if (isChina && G.gloryTokenSupply.length >= 2) {
-						const a = G.gloryTokenSupply.pop()!;
-						const b = G.gloryTokenSupply.pop()!;
+						const a = G.gloryTokenSupply.pop() ?? 0;
+						const b = G.gloryTokenSupply.pop() ?? 0;
 						const keep = Math.max(a, b);
 						const returnToken = Math.min(a, b);
 						player.gloryTokens.push(keep);
 						G.gloryTokenSupply.unshift(returnToken);
 						G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: keep };
 					} else if (isFeudalism && G.gloryTokenSupply.length >= 2) {
-						const a = G.gloryTokenSupply.pop()!;
-						const b = G.gloryTokenSupply.pop()!;
+						const a = G.gloryTokenSupply.pop() ?? 0;
+						const b = G.gloryTokenSupply.pop() ?? 0;
 						const keep = Math.max(a, b);
 						const returnToken = Math.min(a, b);
 						player.gloryTokens.push(keep);
 						G.gloryTokenSupply.unshift(returnToken);
 						G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: keep };
 					} else if (G.gloryTokenSupply.length > 0) {
-						const token = G.gloryTokenSupply.pop()!;
+						const token = G.gloryTokenSupply.pop() ?? 0;
 						player.gloryTokens.push(token);
 						G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: token };
 					}
@@ -2843,7 +2834,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const [card] = G.availableBuildings.splice(cardIdx, 1);
 				player.builtBuildings[targetSlot] = card;
 				if (card.buildingType === 'militaryBase' && G.gloryTokenSupply.length > 0) {
-					const token = G.gloryTokenSupply.pop()!;
+					const token = G.gloryTokenSupply.pop() ?? 0;
 					player.gloryTokens.push(token);
 					G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: token };
 				}
@@ -3033,7 +3024,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						const replaceIdx = argB as number;
 						const keepIdx = argC as unknown as number;
 						if (replaceIdx === undefined || keepIdx === undefined || replaceIdx < 0 || replaceIdx >= player.gloryTokens.length || keepIdx < 0 || keepIdx > 1) return INVALID_MOVE;
-						const drawn = [G.gloryTokenSupply.pop()!, G.gloryTokenSupply.pop()!];
+						const drawn = [G.gloryTokenSupply.pop() ?? 0, G.gloryTokenSupply.pop() ?? 0];
 						const kept = drawn[keepIdx];
 						const returnedDrawn = drawn[1 - keepIdx];
 						const oldToken = player.gloryTokens[replaceIdx];
@@ -3220,7 +3211,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			player.builtBuildings[slotIndex] = card;
 
 			if ((card.buildingType === 'militaryBase' || card.buildingType === 'cultureMilitaryBase') && G.gloryTokenSupply.length > 0) {
-				const token = G.gloryTokenSupply.pop()!;
+				const token = G.gloryTokenSupply.pop() ?? 0;
 				player.gloryTokens.push(token);
 				G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: token };
 			}
