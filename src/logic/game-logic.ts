@@ -2464,8 +2464,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				if (capitalRow == null || capitalCol == null) return INVALID_MOVE;
 				const tileCellSet = new Set(coveredCells.map(([r, c]) => `${r},${c}`));
 				if (!tileCellSet.has(`${capitalRow},${capitalCol}`)) {
+					console.log('[placeTile] capital target not in tile cells', { capitalRow, capitalCol, coveredCells });
 					return INVALID_MOVE;
 				}
+				console.log('[placeTile] relocating capital →', { player: ctx.currentPlayer, capitalRow, capitalCol, coveredCells });
 				relocateCapital(G, ctx.currentPlayer, capitalRow, capitalCol);
 			}
 
@@ -3080,7 +3082,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				player.passedThisEra = true;
 
 				if (G.currentEra === 'IV' && isFirstThisEra) {
-					G.eraIVRemainingTurns = Object.keys(G.players).length - 1;
+					G.eraIVRemainingTurns = Object.keys(G.players).length;
 				}
 				appendLog(G, ctx, 'Started Golden Age');
 			} else if (actionType === 'developTechnology') {

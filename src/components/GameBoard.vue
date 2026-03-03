@@ -216,6 +216,7 @@ function onCellClick(row: number, col: number) {
 		placementTileCellsForCapital.value.length > 1 &&
 		placementTileCellsSetForCapital.value.has(`${row},${col}`)
 	) {
+		console.log("[capitalMove] cell click →", { row, col, cells: placementTileCellsForCapital.value, labels: capitalCellLabels.value });
 		confirmPlacementWithCapital(row, col);
 		return;
 	}
@@ -319,6 +320,7 @@ function confirmPlacement(moveCapital: boolean) {
 function confirmPlacementWithCapital(capitalRow: number, capitalCol: number) {
 	if (!pendingPlacement.value) return;
 	const { anchor, rotation: rot } = pendingPlacement.value;
+	console.log("[capitalMove] confirming →", { anchor, rot, capitalRow, capitalCol });
 	pendingPlacement.value = null;
 	move("placeTile", anchor[0], anchor[1], rot, true, capitalRow, capitalCol);
 	hoverAnchor.value = null;
@@ -392,8 +394,14 @@ const capitalCellLabels = computed<{ row: number; col: number; label: string }[]
 	const cells = placementTileCellsForCapital.value;
 	if (cells.length !== 2) return cells.map(([r, c], i) => ({ row: r, col: c, label: `Cell ${i + 1}` }));
 	const [[r0, c0], [r1, c1]] = cells;
-	if (r0 === r1) return [{ row: r0, col: c0, label: c0 < c1 ? "Left" : "Right" }, { row: r1, col: c1, label: c0 < c1 ? "Right" : "Left" }];
-	return [{ row: r0, col: c0, label: r0 < r1 ? "Top" : "Bottom" }, { row: r1, col: c1, label: r0 < r1 ? "Bottom" : "Top" }];
+	if (r0 === r1) {
+		const left = c0 < c1 ? { row: r0, col: c0 } : { row: r1, col: c1 };
+		const right = c0 < c1 ? { row: r1, col: c1 } : { row: r0, col: c0 };
+		return [{ ...left, label: "Left" }, { ...right, label: "Right" }];
+	}
+	const top = r0 < r1 ? { row: r0, col: c0 } : { row: r1, col: c1 };
+	const bottom = r0 < r1 ? { row: r1, col: c1 } : { row: r0, col: c0 };
+	return [{ ...top, label: "Top" }, { ...bottom, label: "Bottom" }];
 });
 
 const myTileTemplate = computed(() => {
