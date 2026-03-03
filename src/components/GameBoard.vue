@@ -4508,7 +4508,7 @@ onUnmounted(() => {
 			>
 				<div
 					class="grid gap-1 min-w-[480px]"
-					style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 85px)"
+					style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, auto)"
 				>
 					<template
 						v-for="(row, rIdx) in TECH_TREE"
@@ -4517,7 +4517,7 @@ onUnmounted(() => {
 						<div
 							v-for="(tech, cIdx) in row"
 							:key="`tech-${rIdx}-${cIdx}`"
-							class="group rounded-sm px-3 py-2 flex items-start relative overflow-hidden transition-colors border"
+							class="group rounded-sm px-3 py-1.5 flex flex-col relative overflow-hidden transition-colors border"
 							:class="[
 								isTechSelectionActive &&
 									isViewingSelf &&
@@ -4555,26 +4555,32 @@ onUnmounted(() => {
 									: undefined
 							"
 						>
-							<span
-								v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
-								class="text-xs font-bold mr-3 shrink-0"
-								:class="
-									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
-										? 'text-green-400'
-										: 'text-amber-400/80'
-								"
-							>{{
-								(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
-									? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
-									: tech.cost
-							}}</span>
-							<span
-								class="text-sm font-semibold leading-tight truncate"
-								:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-100' : 'text-slate-300'"
-							>{{ tech.name }}</span>
+							<div class="flex items-center">
+								<span
+									v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
+									class="text-xs font-bold mr-2 shrink-0"
+									:class="
+										(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
+											? 'text-green-400'
+											: 'text-amber-400/80'
+									"
+								>{{
+									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
+										? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
+										: tech.cost
+								}}</span>
+								<span
+									class="text-sm font-semibold leading-tight truncate"
+									:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-100' : 'text-slate-300'"
+								>{{ tech.name }}</span>
+							</div>
+							<p
+								class="text-[10px] leading-snug mt-0.5"
+								:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-300/70' : 'text-slate-500'"
+							>{{ tech.description }}</p>
 							<div
 								v-if="viewedPlayer.boardCubes?.[`${rIdx + 1},${cIdx + 1}`]"
-								class="absolute top-2.5 right-2 flex gap-0.5"
+								class="absolute top-1.5 right-1.5 flex gap-0.5"
 							>
 								<div
 									v-for="n in viewedPlayer.boardCubes[`${rIdx + 1},${cIdx + 1}`]"
@@ -4582,11 +4588,6 @@ onUnmounted(() => {
 									class="w-3.5 h-3.5"
 									:class="PLAYER_COLOR_CLASSES[viewedPlayer.color]"
 								/>
-							</div>
-							<div
-								class="hidden group-hover:flex absolute z-10 left-0 top-full mt-1 px-2 py-1.5 bg-slate-900 border border-slate-600 rounded shadow-lg text-[10px] text-slate-300 leading-snug whitespace-normal max-w-[200px] pointer-events-none"
-							>
-								{{ tech.description }}
 							</div>
 						</div>
 					</template>
