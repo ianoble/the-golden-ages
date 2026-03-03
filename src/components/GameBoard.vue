@@ -304,6 +304,7 @@ function onCellClick(row: number, col: number) {
 function confirmPlacement(moveCapital: boolean) {
 	if (!pendingPlacement.value) return;
 	const { anchor, rotation: rot } = pendingPlacement.value;
+	console.log('[confirmPlacement] anchor:', anchor, 'rot:', rot, 'moveCapital:', moveCapital, '(NO capitalRow/Col)');
 	pendingPlacement.value = null;
 	move("placeTile", anchor[0], anchor[1], rot, moveCapital);
 	hoverAnchor.value = null;
@@ -312,6 +313,8 @@ function confirmPlacement(moveCapital: boolean) {
 function confirmPlacementWithCapital(capitalRow: number, capitalCol: number) {
 	if (!pendingPlacement.value) return;
 	const { anchor, rotation: rot } = pendingPlacement.value;
+	console.log('[confirmPlacementWithCapital] anchor:', anchor, 'rot:', rot, 'capitalRow:', capitalRow, 'capitalCol:', capitalCol);
+	console.log('[confirmPlacementWithCapital] all tile cells:', placementTileCellsForCapital.value);
 	pendingPlacement.value = null;
 	move("placeTile", anchor[0], anchor[1], rot, true, capitalRow, capitalCol);
 	hoverAnchor.value = null;

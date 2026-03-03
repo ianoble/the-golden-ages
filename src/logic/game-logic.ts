@@ -2387,6 +2387,9 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			capitalRow?: number,
 			capitalCol?: number,
 		) => {
+			// DEBUG: log all received arguments
+			console.log('[placeTile] args:', { anchorRow, anchorCol, rotation, moveCapital, capitalRow, capitalCol });
+
 			if (G.phase !== 'tilePlacement') return INVALID_MOVE;
 
 			const shape = ERA_TILE_SHAPES[G.currentEra];
@@ -2422,6 +2425,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			const defaultTargetCol = anchorCol + rotated[0][1];
 			const targetRow = moveCapital && capitalRow != null && capitalCol != null ? capitalRow : defaultTargetRow;
 			const targetCol = moveCapital && capitalRow != null && capitalCol != null ? capitalCol : defaultTargetCol;
+			console.log('[placeTile] capital target:', { defaultTargetRow, defaultTargetCol, targetRow, targetCol, coveredCells });
 
 			if (G.currentEra === 'I') {
 				const cornerOffset = rotated[SMALL_L_CORNER_INDEX];
