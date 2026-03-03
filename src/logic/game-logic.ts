@@ -2064,18 +2064,28 @@ export function getReachableCells(
 // When a tile is placed, relocate any capital on a covered cell so workers have a valid destination
 // ---------------------------------------------------------------------------
 
+interface CapitalDisplacement {
+	owner: string;
+	fromRow: number;
+	fromCol: number;
+	toRow: number;
+	toCol: number;
+}
+
 function relocateCapitalsOnCoveredCells(
 	G: GoldenAgesState,
 	coveredCells: [number, number][],
-): void {
-	if (!G.pieces) return;
+): CapitalDisplacement[] {
+	const displaced: CapitalDisplacement[] = [];
+	if (!G.pieces) return displaced;
 	const coveredSet = new Set(coveredCells.map(([r, c]) => getCellKey(r, c)));
 	const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 	for (const piece of G.pieces) {
 		if (piece.type !== 'capital') continue;
 		const key = getCellKey(piece.row, piece.col);
 		if (!coveredSet.has(key)) continue;
-		// Find an adjacent cell that is in bounds and not covered
+		const fromRow = piece.row;
+		const fromCol = piece.col;
 		for (const [dr, dc] of dirs) {
 			const nr = piece.row + dr;
 			const nc = piece.col + dc;
@@ -2083,9 +2093,11 @@ function relocateCapitalsOnCoveredCells(
 			if (coveredSet.has(getCellKey(nr, nc))) continue;
 			piece.row = nr;
 			piece.col = nc;
+			displaced.push({ owner: piece.owner, fromRow, fromCol, toRow: nr, toCol: nc });
 			break;
 		}
 	}
+	return displaced;
 }
 
 // ---------------------------------------------------------------------------
@@ -2407,8 +2419,15 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 			const rotated = rotateTileOffsets(shape.offsets, rotation);
 			const coveredCells: [number, number][] = rotated.map(([dr, dc]) => [anchorRow + dr, anchorCol + dc]);
-			relocateCapitalsOnCoveredCells(G, coveredCells);
+			const displacements = relocateCapitalsOnCoveredCells(G, coveredCells);
 			returnWorkersOnCellsToCapital(G, coveredCells);
+			for (const d of displacements) {
+				const ownerColor = G.players[d.owner]?.color;
+				const logEntry = { message: `Capital displaced by new tile`, playerColor: ownerColor };
+				if (!G.gameLog) G.gameLog = [];
+				G.gameLog.push(logEntry);
+				if (G.gameLog.length > MAX_LOG_ENTRIES) G.gameLog.shift();
+			}
 
 			if (!G.boardEdges) G.boardEdges = {};
 			if (tileEdges) {
@@ -2464,10 +2483,8 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				if (capitalRow == null || capitalCol == null) return INVALID_MOVE;
 				const tileCellSet = new Set(coveredCells.map(([r, c]) => `${r},${c}`));
 				if (!tileCellSet.has(`${capitalRow},${capitalCol}`)) {
-					console.log('[placeTile] capital target not in tile cells', { capitalRow, capitalCol, coveredCells });
 					return INVALID_MOVE;
 				}
-				console.log('[placeTile] relocating capital →', { player: ctx.currentPlayer, capitalRow, capitalCol, coveredCells });
 				relocateCapital(G, ctx.currentPlayer, capitalRow, capitalCol);
 			}
 

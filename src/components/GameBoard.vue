@@ -216,7 +216,6 @@ function onCellClick(row: number, col: number) {
 		placementTileCellsForCapital.value.length > 1 &&
 		placementTileCellsSetForCapital.value.has(`${row},${col}`)
 	) {
-		console.log("[capitalMove] cell click →", { row, col, cells: placementTileCellsForCapital.value, labels: capitalCellLabels.value });
 		confirmPlacementWithCapital(row, col);
 		return;
 	}
@@ -309,9 +308,11 @@ function confirmPlacement(moveCapital: boolean) {
 		const cells = placementTileCellsForCapital.value;
 		const [capRow, capCol] = cells[0];
 		pendingPlacement.value = null;
+		markRecentTilePlacement();
 		move("placeTile", anchor[0], anchor[1], rot, true, capRow, capCol);
 	} else {
 		pendingPlacement.value = null;
+		markRecentTilePlacement();
 		move("placeTile", anchor[0], anchor[1], rot, false);
 	}
 	hoverAnchor.value = null;
@@ -320,8 +321,8 @@ function confirmPlacement(moveCapital: boolean) {
 function confirmPlacementWithCapital(capitalRow: number, capitalCol: number) {
 	if (!pendingPlacement.value) return;
 	const { anchor, rotation: rot } = pendingPlacement.value;
-	console.log("[capitalMove] confirming →", { anchor, rot, capitalRow, capitalCol });
 	pendingPlacement.value = null;
+	markRecentTilePlacement();
 	move("placeTile", anchor[0], anchor[1], rot, true, capitalRow, capitalCol);
 	hoverAnchor.value = null;
 }
@@ -484,6 +485,38 @@ function cellWaterEdges(row: number, col: number): boolean[] {
 	const edges = getPreviewBoardEdges(row, col) ?? getBoardEdges(row, col);
 	return waterEdges(edges);
 }
+
+// Detect when the player's capital is displaced by another player's tile placement
+const capitalDisplacedMsg = ref("");
+let capitalDisplacedTimeout: ReturnType<typeof setTimeout> | null = null;
+const prevCapitalPos = ref<{ row: number; col: number } | null>(null);
+let recentlyPlacedTile = false;
+let recentlyPlacedTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function markRecentTilePlacement() {
+	recentlyPlacedTile = true;
+	if (recentlyPlacedTimeout) clearTimeout(recentlyPlacedTimeout);
+	recentlyPlacedTimeout = setTimeout(() => { recentlyPlacedTile = false; }, 3000);
+}
+
+watch(
+	() => {
+		if (!G.value?.pieces || !playerID.value) return null;
+		const cap = G.value.pieces.find((p: BoardPiece) => p.type === "capital" && p.owner === playerID.value);
+		return cap ? { row: cap.row, col: cap.col } : null;
+	},
+	(pos) => {
+		if (!pos) return;
+		const prev = prevCapitalPos.value;
+		if (prev && (prev.row !== pos.row || prev.col !== pos.col) && !pendingPlacement.value && !recentlyPlacedTile) {
+			capitalDisplacedMsg.value = "Your capital was displaced by a new tile!";
+			if (capitalDisplacedTimeout) clearTimeout(capitalDisplacedTimeout);
+			capitalDisplacedTimeout = setTimeout(() => { capitalDisplacedMsg.value = ""; }, 4000);
+		}
+		prevCapitalPos.value = { ...pos };
+	},
+	{ deep: true },
+);
 
 // Debug: log edge state once on load
 const _edgeDebugDone = ref(false);
@@ -3067,6 +3100,17 @@ onUnmounted(() => {
 		class="h-10 md:h-12"
 	/>
 
+	<!-- Capital displacement notification -->
+	<Transition name="fade">
+		<div
+			v-if="capitalDisplacedMsg"
+			class="fixed left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-lg bg-red-900/90 border border-red-500/50 text-red-200 text-xs md:text-sm font-medium shadow-lg backdrop-blur-sm pointer-events-none"
+			:style="{ top: (props.headerHeight + 8) + 'px' }"
+		>
+			{{ capitalDisplacedMsg }}
+		</div>
+	</Transition>
+
 	<div
 		v-if="G?.board"
 		class="flex flex-col items-center gap-4 md:gap-6 w-full max-w-5xl mx-auto px-2 md:px-0"
@@ -4810,6 +4854,15 @@ onUnmounted(() => {
 .log-slide-enter-from,
 .log-slide-leave-to {
 	transform: translateX(-100%);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+	transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+	opacity: 0;
 }
 
 /* Glory token reveal overlay */
