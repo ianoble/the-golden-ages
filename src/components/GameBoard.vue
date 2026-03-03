@@ -209,6 +209,19 @@ function onCellClick(row: number, col: number) {
 	// Glory token reveal is modal: must dismiss before any other action
 	if (showGloryReveal.value) return;
 
+	// Capital move has highest priority — user is choosing a cell for their capital
+	if (
+		activePrompt.value === "capitalMove" &&
+		pendingPlacement.value &&
+		placementTileCellsForCapital.value.length > 1 &&
+		placementTileCellsSetForCapital.value.has(`${row},${col}`)
+	) {
+		confirmPlacementWithCapital(row, col);
+		return;
+	}
+	// If we're in capital move mode, ignore clicks on non-tile cells
+	if (activePrompt.value === "capitalMove" && pendingPlacement.value) return;
+
 	// Spread cult: click valid destination after choosing card + token
 	if (pendingCultSpread.value && isMyTurn.value && spreadCultCardIndex.value !== null && spreadCultTokenType.value !== null) {
 		const key = `${row},${col}`;
@@ -272,17 +285,6 @@ function onCellClick(row: number, col: number) {
 			onStartExplorer();
 			return;
 		}
-	}
-
-	// Capital move: picking which square on the placed tile for the capital (multi-cell tile only)
-	if (
-		activePrompt.value === "capitalMove" &&
-		pendingPlacement.value &&
-		placementTileCellsForCapital.value.length > 1 &&
-		placementTileCellsSetForCapital.value.has(`${row},${col}`)
-	) {
-		confirmPlacementWithCapital(row, col);
-		return;
 	}
 
 	if (!isMyTurn.value || !isTilePlacement.value) return;
@@ -377,6 +379,14 @@ const placementTileCellsSetForCapital = computed(() => {
 		set.add(`${r},${c}`);
 	}
 	return set;
+});
+
+const capitalCellLabels = computed<{ row: number; col: number; label: string }[]>(() => {
+	const cells = placementTileCellsForCapital.value;
+	if (cells.length !== 2) return cells.map(([r, c], i) => ({ row: r, col: c, label: `Cell ${i + 1}` }));
+	const [[r0, c0], [r1, c1]] = cells;
+	if (r0 === r1) return [{ row: r0, col: c0, label: c0 < c1 ? "Left" : "Right" }, { row: r1, col: c1, label: c0 < c1 ? "Right" : "Left" }];
+	return [{ row: r0, col: c0, label: r0 < r1 ? "Top" : "Bottom" }, { row: r1, col: c1, label: r0 < r1 ? "Bottom" : "Top" }];
 });
 
 const myTileTemplate = computed(() => {
@@ -2534,15 +2544,31 @@ watch(activePrompt, (newVal) => {
 	if (newVal) window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
-// Glory token just drawn — show reveal animation for current player only
-const showGloryReveal = computed(() => {
-	const draw = G.value?.lastGloryDraw;
-	if (!draw) return false;
-	const pid = playerID?.value;
-	// Match drawer (use == so string "0" and number 0 both match)
-	return pid != null && String(draw.playerId) === String(pid);
-});
-const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
+// Glory token just drawn — show reveal animation for current player only.
+// Tracked client-side because maxMoves:1 ends the turn immediately after the
+// move, so lastGloryDraw on the server can be cleared before the client renders.
+const gloryRevealVp = ref<number | null>(null);
+const showGloryReveal = computed(() => gloryRevealVp.value !== null);
+const lastGloryDrawVp = computed(() => gloryRevealVp.value ?? 0);
+
+let _lastSeenGlorySeq = 0;
+watch(
+	() => G.value?.lastGloryDraw,
+	(draw) => {
+		if (!draw) return;
+		const pid = playerID?.value;
+		if (pid == null || String(draw.playerId) !== String(pid)) return;
+		const seq = (G.value?.history?.length ?? 0);
+		if (seq === _lastSeenGlorySeq) return;
+		_lastSeenGlorySeq = seq;
+		gloryRevealVp.value = draw.vp;
+	},
+	{ immediate: true },
+);
+
+function dismissGloryReveal() {
+	gloryRevealVp.value = null;
+}
 
 // History's Judgement card just picked (first golden age) — show to other players so they can see which card was picked.
 // Use lastHistoryCardPickPlayerId when set (new games); for existing games saved before this feature, infer picker from who has the card in historyCards.
@@ -2672,8 +2698,17 @@ onUnmounted(() => {
 				<template v-if="activePrompt === 'capitalMove'">
 					<template v-if="placementTileCellsForCapital.length > 1">
 						<p class="text-xs md:text-sm text-slate-200 font-medium">
-							Choose a square on the tile for your capital (click a highlighted cell on the board).
+							Move capital? Click a highlighted cell or pick:
 						</p>
+						<button
+							v-for="opt in capitalCellLabels"
+							:key="`${opt.row},${opt.col}`"
+							class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+							:title="`Move capital to the ${opt.label.toLowerCase()} cell`"
+							@click="confirmPlacementWithCapital(opt.row, opt.col)"
+						>
+							{{ opt.label }}
+						</button>
 						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
 							title="Place the tile without moving your capital"
@@ -2963,7 +2998,7 @@ onUnmounted(() => {
 						type="button"
 						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
 						title="Dismiss this notification and continue playing"
-						@click="move('acknowledgeGloryDraw')"
+						@click="dismissGloryReveal"
 					>
 						Continue
 					</button>
@@ -3370,11 +3405,11 @@ onUnmounted(() => {
 											v-if="cellWaterEdges(row, col)[3]"
 											class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
 										/>
-										<!-- <span
-										v-if="isStartingTileLabel(row, col)"
-										class="text-amber-300/60 text-xs font-medium pointer-events-none select-none"
-										>Start</span
-									> -->
+										<!-- Capital-move cell label overlay -->
+										<span
+											v-if="pendingPlacement && placementTileCellsForCapital.length > 1 && placementTileCellsSetForCapital.has(`${row},${col}`)"
+											class="absolute bottom-1 left-1/2 -translate-x-1/2 text-amber-300 text-[10px] font-bold pointer-events-none select-none z-20 bg-slate-900/70 rounded px-1"
+										>{{ capitalCellLabels.find(o => o.row === row && o.col === col)?.label }}</span>
 
 										<template v-if="resourcesAt(row, col).length === 1 && !previewCells.has(`${row},${col}`)">
 											<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
@@ -3836,7 +3871,7 @@ onUnmounted(() => {
 			:class="isViewingSelf ? PLAYER_COLOR_BORDER[viewedPlayer.color] : 'border-slate-700'"
 		>
 			<!-- Header: arrows + player info + resources -->
-			<div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
 				<button
 					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
 					title="View previous player's board"
@@ -4124,7 +4159,7 @@ onUnmounted(() => {
 					</span>
 				</div>
 
-				<div class="flex items-center gap-2 md:gap-3 text-base text-slate-400 shrink-0">
+				<div class="flex items-center gap-2 md:gap-3 text-sm md:text-base text-slate-400 order-1 md:order-none w-full md:w-auto pl-9 md:pl-0 shrink-0">
 					<span
 						class="inline-flex items-center gap-0.5"
 						title="Gold"
@@ -4180,9 +4215,11 @@ onUnmounted(() => {
 				</button>
 			</div>
 
-			<!-- Bottom third: cards + invasion track + actions in one row -->
+			<!-- Bottom third: cards + invasion track + actions -->
 			<div class="px-3 md:px-4 pt-1.5 md:pt-2 border-b mb-0 pb-2 border-slate-700/50">
-				<div class="flex gap-2 items-center overflow-x-auto">
+				<div class="flex flex-wrap md:flex-nowrap gap-2 items-start">
+					<!-- Cards area (scrollable) -->
+					<div class="flex gap-2 items-center overflow-x-auto min-w-0 flex-1">
 					<!-- Building slots -->
 					<div
 						v-for="(_, slotIdx) in 3"
@@ -4312,11 +4349,10 @@ onUnmounted(() => {
 						</div>
 					</div>
 
-					<!-- Spacer to push actions right -->
-					<div class="flex-1" />
+				</div>
 
-					<!-- Invasion track + Action icons (right-aligned, stacked) -->
-					<div class="flex flex-col items-stretch gap-2.5 shrink-0 pl-1 border-l border-slate-700/40">
+					<!-- Invasion track + Action icons -->
+					<div class="flex flex-col items-stretch gap-2.5 shrink-0 w-full md:w-auto pt-2 md:pt-0 md:pl-1 md:border-l border-slate-700/40">
 						<!-- Invasion track -->
 						<div class="flex items-center justify-between gap-0.5">
 							<template
