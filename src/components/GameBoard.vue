@@ -655,7 +655,7 @@ function cellClasses(row: number, col: number): string {
 	// Soldier destination highlight
 	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key)) {
 		const hasEnemy =
-			piecesAt(row, col).some((p) => p.type === "worker" && p.owner !== playerID.value && !p.inAgora) ||
+			piecesAt(row, col).some((p) => (p.type === "worker" || p.type === "capital") && p.owner !== playerID.value && !p.inAgora) ||
 			(G.value?.cities ?? []).some((ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col);
 		if (hasEnemy) {
 			if (!canAffordAttackAtCell(row, col)) return "bg-slate-500/15 border-2 border-slate-500/30 cursor-not-allowed";
@@ -1750,14 +1750,16 @@ const soldierReachableSet = computed(() => {
 
 const soldierEnemiesAtDest = computed(() => {
 	if (!soldierDest.value || !G.value || !playerID.value)
-		return { workers: [] as BoardPiece[], cities: [] as BoardCity[], defenderIds: [] as string[] };
+		return { workers: [] as BoardPiece[], cities: [] as BoardCity[], capitals: [] as BoardPiece[], defenderIds: [] as string[] };
 	const [r, c] = soldierDest.value;
 	const workers = G.value.pieces.filter((p) => p.type === "worker" && p.owner !== playerID.value && p.row === r && p.col === c && !p.inAgora);
 	const cities = G.value.cities.filter((ct) => ct.owner !== playerID.value && ct.row === r && ct.col === c);
+	const capitals = G.value.pieces.filter((p) => p.type === "capital" && p.owner !== playerID.value && p.row === r && p.col === c);
 	const ids = new Set<string>();
 	for (const w of workers) ids.add(w.owner);
 	for (const ct of cities) ids.add(ct.owner);
-	return { workers, cities, defenderIds: [...ids] };
+	for (const cap of capitals) ids.add(cap.owner);
+	return { workers, cities, capitals, defenderIds: [...ids] };
 });
 
 const soldierAttackCost = computed(() => {
@@ -1787,10 +1789,14 @@ function canAffordAttackAtCell(row: number, col: number): boolean {
 	const enemyCities = G.value.cities.filter(
 		(ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col,
 	);
-	if (enemies.length === 0 && enemyCities.length === 0) return true;
+	const enemyCapitals = G.value.pieces.filter(
+		(p) => p.type === "capital" && p.owner !== playerID.value && p.row === row && p.col === col,
+	);
+	if (enemies.length === 0 && enemyCities.length === 0 && enemyCapitals.length === 0) return true;
 	const defenderIds = new Set<string>();
 	for (const ew of enemies) defenderIds.add(ew.owner);
 	for (const ec of enemyCities) defenderIds.add(ec.owner);
+	for (const cap of enemyCapitals) defenderIds.add(cap.owner);
 	let totalCost = 0;
 	for (const did of defenderIds) {
 		const cost = getAttackCost(G.value, playerID.value, did);
@@ -1805,28 +1811,25 @@ const canFoundCityAtSoldierDest = computed(() => {
 	const [r, c] = soldierDest.value;
 	const tileInfo = getTileAt(G.value.tiles, r, c);
 	if (!tileInfo) return false;
-	const hasEnemies = soldierEnemiesAtDest.value.workers.length > 0 || soldierEnemiesAtDest.value.cities.length > 0;
-	const hasCapitalOrCity =
-		G.value.pieces.some((p) => p.type === "capital" && p.row === r && p.col === c) ||
-		G.value.cities.some((ct) => ct.row === r && ct.col === c && (hasEnemies ? ct.owner === playerID.value : true));
-	if (hasCapitalOrCity && !hasEnemies) return false;
-	if (!hasEnemies) {
-		const player = G.value.players[playerID.value];
-		if (!player) return false;
-		const hasConstruction = player.researchedTechs?.[2]?.[2];
-		const cubeCost = hasConstruction ? 2 : 1;
-		if (player.cubes < cubeCost) return false;
-	} else {
-		const player = G.value.players[playerID.value];
-		if (!player) return false;
-		const hasConstruction = player.researchedTechs?.[2]?.[2];
-		const cubeCost = hasConstruction ? 2 : 1;
-		if (player.cubes < cubeCost) return false;
-		const friendlyCapOrCity =
-			G.value.pieces.some((p) => p.type === "capital" && p.owner === playerID.value && p.row === r && p.col === c) ||
-			G.value.cities.some((ct) => ct.owner === playerID.value && ct.row === r && ct.col === c);
-		if (friendlyCapOrCity) return false;
-	}
+	const hasEnemies = soldierEnemiesAtDest.value.defenderIds.length > 0;
+	// Own capital always blocks city founding
+	const hasOwnCapital = G.value.pieces.some((p) => p.type === "capital" && p.owner === playerID.value && p.row === r && p.col === c);
+	if (hasOwnCapital) return false;
+	// Enemy capital without attack: blocks. With attack: capital will be displaced, so doesn't block.
+	const hasEnemyCapital = soldierEnemiesAtDest.value.capitals.length > 0;
+	if (hasEnemyCapital && !hasEnemies) return false;
+	// Own city always blocks
+	const hasOwnCity = G.value.cities.some((ct) => ct.owner === playerID.value && ct.row === r && ct.col === c);
+	if (hasOwnCity) return false;
+	// Enemy city without attack: blocks
+	const hasEnemyCity = G.value.cities.some((ct) => ct.owner !== playerID.value && ct.row === r && ct.col === c);
+	if (hasEnemyCity && !hasEnemies) return false;
+
+	const player = G.value.players[playerID.value];
+	if (!player) return false;
+	const hasConstruction = player.researchedTechs?.[2]?.[2];
+	const cubeCost = hasConstruction ? 2 : 1;
+	if (player.cubes < cubeCost) return false;
 	return true;
 });
 

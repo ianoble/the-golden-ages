@@ -2630,7 +2630,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const enemyCities = G.cities.filter(
 					(c) => c.owner !== ctx.currentPlayer && c.row === destRow && c.col === destCol,
 				);
-				const hasEnemies = enemyWorkers.length > 0 || enemyCities.length > 0;
+				const enemyCapitals = G.pieces.filter(
+					(p) => p.type === 'capital' && p.owner !== ctx.currentPlayer && p.row === destRow && p.col === destCol,
+				);
+				const hasEnemies = enemyWorkers.length > 0 || enemyCities.length > 0 || enemyCapitals.length > 0;
 
 				if (hasEnemies && G.activeCivCard[ctx.currentPlayer]?.civType === 'usa') {
 					player.gold += 4;
@@ -2640,6 +2643,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					const defenderIds = new Set<string>();
 					for (const ew of enemyWorkers) defenderIds.add(ew.owner);
 					for (const ec of enemyCities) defenderIds.add(ec.owner);
+					for (const cap of enemyCapitals) defenderIds.add(cap.owner);
 
 					let totalAttackCost = 0;
 					for (const defenderId of defenderIds) {
@@ -2674,6 +2678,27 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					G.cities = G.cities.filter(
 						(c) => !(c.owner !== ctx.currentPlayer && c.row === destRow && c.col === destCol),
 					);
+
+					// Relocate displaced enemy capitals and their workers to an adjacent cell
+					const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+					for (const cap of enemyCapitals) {
+						for (const [dr, dc] of dirs) {
+							const nr = cap.row + dr;
+							const nc = cap.col + dc;
+							if (nr < 0 || nr >= BOARD_ROWS || nc < 0 || nc >= BOARD_COLS) continue;
+							const srcRow = cap.row;
+							const srcCol = cap.col;
+							cap.row = nr;
+							cap.col = nc;
+							for (const piece of G.pieces) {
+								if (piece.type === 'worker' && piece.owner === cap.owner && piece.row === srcRow && piece.col === srcCol) {
+									piece.row = nr;
+									piece.col = nc;
+								}
+							}
+							break;
+						}
+					}
 
 					player.invasionTrackPos++;
 
