@@ -19,10 +19,13 @@
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "node ../../copy-to-client.cjs",
     "dev": "tsc --watch",
-    "postdev": "powershell -ExecutionPolicy Bypass -File ../../copy-to-client.ps1",
+    "postdev": "node ../../copy-to-client.cjs",
     "start": "tsc",
-    "poststart": "powershell -ExecutionPolicy Bypass -File ../../copy-to-client.ps1"
+    "poststart": "node ../../copy-to-client.cjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "boardgame.io": "^0.50.2",
