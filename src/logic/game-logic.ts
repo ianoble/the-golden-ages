@@ -780,7 +780,7 @@ const ERA_COUNTS: Record<string, Record<Era, number>> = {
 };
 
 const SMALL_L = defineTileShape('SmallL', [[0, 0], [1, 0], [1, 1]], 'Small L');
-const SINGLE_1X1 = defineTileShape('1x1', [[0, 0]], '1x1');
+const _SINGLE_1X1 = defineTileShape('1x1', [[0, 0]], '1x1'); // eslint-disable-line @typescript-eslint/no-unused-vars
 /** Index of the corner cell in SMALL_L offsets (the cell connecting both arms). */
 const SMALL_L_CORNER_INDEX = 1;
 
@@ -1634,7 +1634,7 @@ function getGameOverResult(G: GoldenAgesState): { winner: string } | { isDraw: t
 		breakdown &&
 		Object.keys(breakdown).length > 0 &&
 		base.every((r) => (breakdown[r.playerId]?.length ?? 0) > 0);
-	const breakdownToUse = hasValidBreakdown ? breakdown! : computeEndGameBreakdown(G);
+	const breakdownToUse = hasValidBreakdown ? (breakdown as Record<string, { label: string; vp: number }[]>) : computeEndGameBreakdown(G);
 	const totalByPlayer: Record<string, number> = {};
 	for (const r of base) {
 		const sum = (breakdownToUse[r.playerId] ?? []).reduce((s, e) => s + e.vp, 0);
@@ -1801,11 +1801,11 @@ function hasWonder(player: GoldenAgesPlayerState, wonderType: string): boolean {
 }
 
 function hasProgress(player: GoldenAgesPlayerState, type: string): boolean {
-	return (player.progressCards ?? []).some((c) => c.type === type);
+	return (player.progressCards ?? []).some((c) => c.id?.includes(type));
 }
 
 function hasGovernment(player: GoldenAgesPlayerState, type: string): boolean {
-	return player.governmentCard?.type === type;
+	return player.governmentCard?.id?.includes(type) ?? false;
 }
 
 function researchFreeTech(G: GoldenAgesState, player: GoldenAgesPlayerState, row: number, col: number): void {
@@ -2064,18 +2064,28 @@ export function getReachableCells(
 // When a tile is placed, relocate any capital on a covered cell so workers have a valid destination
 // ---------------------------------------------------------------------------
 
+interface CapitalDisplacement {
+	owner: string;
+	fromRow: number;
+	fromCol: number;
+	toRow: number;
+	toCol: number;
+}
+
 function relocateCapitalsOnCoveredCells(
 	G: GoldenAgesState,
 	coveredCells: [number, number][],
-): void {
-	if (!G.pieces) return;
+): CapitalDisplacement[] {
+	const displaced: CapitalDisplacement[] = [];
+	if (!G.pieces) return displaced;
 	const coveredSet = new Set(coveredCells.map(([r, c]) => getCellKey(r, c)));
 	const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 	for (const piece of G.pieces) {
 		if (piece.type !== 'capital') continue;
 		const key = getCellKey(piece.row, piece.col);
 		if (!coveredSet.has(key)) continue;
-		// Find an adjacent cell that is in bounds and not covered
+		const fromRow = piece.row;
+		const fromCol = piece.col;
 		for (const [dr, dc] of dirs) {
 			const nr = piece.row + dr;
 			const nc = piece.col + dc;
@@ -2083,9 +2093,11 @@ function relocateCapitalsOnCoveredCells(
 			if (coveredSet.has(getCellKey(nr, nc))) continue;
 			piece.row = nr;
 			piece.col = nc;
+			displaced.push({ owner: piece.owner, fromRow, fromCol, toRow: nr, toCol: nc });
 			break;
 		}
 	}
+	return displaced;
 }
 
 // ---------------------------------------------------------------------------
@@ -2407,8 +2419,15 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 			const rotated = rotateTileOffsets(shape.offsets, rotation);
 			const coveredCells: [number, number][] = rotated.map(([dr, dc]) => [anchorRow + dr, anchorCol + dc]);
-			relocateCapitalsOnCoveredCells(G, coveredCells);
+			const displacements = relocateCapitalsOnCoveredCells(G, coveredCells);
 			returnWorkersOnCellsToCapital(G, coveredCells);
+			for (const d of displacements) {
+				const ownerColor = G.players[d.owner]?.color;
+				const logEntry = { message: `Capital displaced by new tile`, playerColor: ownerColor };
+				if (!G.gameLog) G.gameLog = [];
+				G.gameLog.push(logEntry);
+				if (G.gameLog.length > MAX_LOG_ENTRIES) G.gameLog.shift();
+			}
 
 			if (!G.boardEdges) G.boardEdges = {};
 			if (tileEdges) {
@@ -2417,11 +2436,6 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					G.boardEdges[key] = rotateCellEdges(tileEdges[idx], rotation);
 				}
 			}
-
-			const defaultTargetRow = anchorRow + rotated[0][0];
-			const defaultTargetCol = anchorCol + rotated[0][1];
-			const targetRow = moveCapital && capitalRow != null && capitalCol != null ? capitalRow : defaultTargetRow;
-			const targetCol = moveCapital && capitalRow != null && capitalCol != null ? capitalCol : defaultTargetCol;
 
 			if (G.currentEra === 'I') {
 				const cornerOffset = rotated[SMALL_L_CORNER_INDEX];
@@ -2466,12 +2480,12 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 
 				tryTakeControl(G, ctx.currentPlayer, cornerRow, cornerCol);
 			} else if (moveCapital) {
-				// Validate that chosen cell is on the placed tile when capitalRow/capitalCol provided
+				if (capitalRow == null || capitalCol == null) return INVALID_MOVE;
 				const tileCellSet = new Set(coveredCells.map(([r, c]) => `${r},${c}`));
-				if (capitalRow != null && capitalCol != null && !tileCellSet.has(`${targetRow},${targetCol}`)) {
+				if (!tileCellSet.has(`${capitalRow},${capitalCol}`)) {
 					return INVALID_MOVE;
 				}
-				relocateCapital(G, ctx.currentPlayer, targetRow, targetCol);
+				relocateCapital(G, ctx.currentPlayer, capitalRow, capitalCol);
 			}
 
 			if (G.currentEra !== 'I') {
@@ -2626,7 +2640,10 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const enemyCities = G.cities.filter(
 					(c) => c.owner !== ctx.currentPlayer && c.row === destRow && c.col === destCol,
 				);
-				const hasEnemies = enemyWorkers.length > 0 || enemyCities.length > 0;
+				const enemyCapitals = G.pieces.filter(
+					(p) => p.type === 'capital' && p.owner !== ctx.currentPlayer && p.row === destRow && p.col === destCol,
+				);
+				const hasEnemies = enemyWorkers.length > 0 || enemyCities.length > 0 || enemyCapitals.length > 0;
 
 				if (hasEnemies && G.activeCivCard[ctx.currentPlayer]?.civType === 'usa') {
 					player.gold += 4;
@@ -2636,6 +2653,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 					const defenderIds = new Set<string>();
 					for (const ew of enemyWorkers) defenderIds.add(ew.owner);
 					for (const ec of enemyCities) defenderIds.add(ec.owner);
+					for (const cap of enemyCapitals) defenderIds.add(cap.owner);
 
 					let totalAttackCost = 0;
 					for (const defenderId of defenderIds) {
@@ -2671,28 +2689,49 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						(c) => !(c.owner !== ctx.currentPlayer && c.row === destRow && c.col === destCol),
 					);
 
+					// Relocate displaced enemy capitals and their workers to an adjacent cell
+					const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+					for (const cap of enemyCapitals) {
+						for (const [dr, dc] of dirs) {
+							const nr = cap.row + dr;
+							const nc = cap.col + dc;
+							if (nr < 0 || nr >= BOARD_ROWS || nc < 0 || nc >= BOARD_COLS) continue;
+							const srcRow = cap.row;
+							const srcCol = cap.col;
+							cap.row = nr;
+							cap.col = nc;
+							for (const piece of G.pieces) {
+								if (piece.type === 'worker' && piece.owner === cap.owner && piece.row === srcRow && piece.col === srcCol) {
+									piece.row = nr;
+									piece.col = nc;
+								}
+							}
+							break;
+						}
+					}
+
 					player.invasionTrackPos++;
 
 					const isChina = G.activeCivCard[ctx.currentPlayer]?.civType === 'china';
 					const isFeudalism = hasGovernment(player, 'feudalism');
 					if (isChina && G.gloryTokenSupply.length >= 2) {
-						const a = G.gloryTokenSupply.pop()!;
-						const b = G.gloryTokenSupply.pop()!;
+						const a = G.gloryTokenSupply.pop() ?? 0;
+						const b = G.gloryTokenSupply.pop() ?? 0;
 						const keep = Math.max(a, b);
 						const returnToken = Math.min(a, b);
 						player.gloryTokens.push(keep);
 						G.gloryTokenSupply.unshift(returnToken);
 						G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: keep };
 					} else if (isFeudalism && G.gloryTokenSupply.length >= 2) {
-						const a = G.gloryTokenSupply.pop()!;
-						const b = G.gloryTokenSupply.pop()!;
+						const a = G.gloryTokenSupply.pop() ?? 0;
+						const b = G.gloryTokenSupply.pop() ?? 0;
 						const keep = Math.max(a, b);
 						const returnToken = Math.min(a, b);
 						player.gloryTokens.push(keep);
 						G.gloryTokenSupply.unshift(returnToken);
 						G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: keep };
 					} else if (G.gloryTokenSupply.length > 0) {
-						const token = G.gloryTokenSupply.pop()!;
+						const token = G.gloryTokenSupply.pop() ?? 0;
 						player.gloryTokens.push(token);
 						G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: token };
 					}
@@ -2814,7 +2853,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				const [card] = G.availableBuildings.splice(cardIdx, 1);
 				player.builtBuildings[targetSlot] = card;
 				if (card.buildingType === 'militaryBase' && G.gloryTokenSupply.length > 0) {
-					const token = G.gloryTokenSupply.pop()!;
+					const token = G.gloryTokenSupply.pop() ?? 0;
 					player.gloryTokens.push(token);
 					G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: token };
 				}
@@ -3004,7 +3043,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 						const replaceIdx = argB as number;
 						const keepIdx = argC as unknown as number;
 						if (replaceIdx === undefined || keepIdx === undefined || replaceIdx < 0 || replaceIdx >= player.gloryTokens.length || keepIdx < 0 || keepIdx > 1) return INVALID_MOVE;
-						const drawn = [G.gloryTokenSupply.pop()!, G.gloryTokenSupply.pop()!];
+						const drawn = [G.gloryTokenSupply.pop() ?? 0, G.gloryTokenSupply.pop() ?? 0];
 						const kept = drawn[keepIdx];
 						const returnedDrawn = drawn[1 - keepIdx];
 						const oldToken = player.gloryTokens[replaceIdx];
@@ -3060,7 +3099,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 				player.passedThisEra = true;
 
 				if (G.currentEra === 'IV' && isFirstThisEra) {
-					G.eraIVRemainingTurns = Object.keys(G.players).length - 1;
+					G.eraIVRemainingTurns = Object.keys(G.players).length;
 				}
 				appendLog(G, ctx, 'Started Golden Age');
 			} else if (actionType === 'developTechnology') {
@@ -3191,7 +3230,7 @@ const GoldenAgesGame: Game<GoldenAgesState> = {
 			player.builtBuildings[slotIndex] = card;
 
 			if ((card.buildingType === 'militaryBase' || card.buildingType === 'cultureMilitaryBase') && G.gloryTokenSupply.length > 0) {
-				const token = G.gloryTokenSupply.pop()!;
+				const token = G.gloryTokenSupply.pop() ?? 0;
 				player.gloryTokens.push(token);
 				G.lastGloryDraw = { playerId: ctx.currentPlayer, vp: token };
 			}

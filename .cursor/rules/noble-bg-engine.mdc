@@ -1,0 +1,16 @@
+---
+description: Workflow for editing the noble-bg-engine shared engine
+alwaysApply: true
+---
+
+# noble-bg-engine Workflow
+
+The `noble-bg-engine` directory inside this workspace (`the-golden-ages/noble-bg-engine/`) is a **read-only copy** synced from the upstream project at `c:\code\noble-bg-engine`.
+
+When making changes to engine code:
+
+1. **Edit** files in `c:\code\noble-bg-engine\packages\engine\src\` (the upstream project)
+2. **Build** from the engine directory: `npm run build` in `c:\code\noble-bg-engine\packages\engine`
+3. The `postbuild` script automatically copies the updated source into this workspace's `noble-bg-engine/` directory
+
+Never edit files under `the-golden-ages\noble-bg-engine\` directly — they will be overwritten on the next engine build.

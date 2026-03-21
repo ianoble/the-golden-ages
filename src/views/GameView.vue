@@ -37,6 +37,65 @@ const PLAYER_COLOR_TEXT: Record<string, string> = {
 	black: "text-slate-300",
 };
 
+const FAVICON_COLOR_HEX: Record<string, string> = {
+	red: "#ef4444",
+	blue: "#3b82f6",
+	green: "#22c55e",
+	yellow: "#eab308",
+	black: "#475569",
+};
+
+const MEEPLE_SVG_PATH =
+	"M32 23c-3 0-6 1.5-8 3L10 36c-2 1.5-1 4 1.5 4H20l-4 18c-.5 2 1 3 3 3h26c2 0 3.5-1 3-3L44 40h8.5c2.5 0 3.5-2.5 1.5-4L40 26c-2-1.5-5-3-8-3z";
+
+function buildMeepleSvgUrl(fill: string): string {
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+		`<circle cx="32" cy="12" r="9" fill="${fill}" stroke="#1e293b" stroke-width="2"/>` +
+		`<path d="${MEEPLE_SVG_PATH}" fill="${fill}" stroke="#1e293b" stroke-width="2"/>` +
+		`</svg>`;
+	return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+let _originalFaviconHref: string | null = null;
+
+function setFavicon(url: string) {
+	let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+	if (!link) {
+		link = document.createElement("link");
+		link.rel = "icon";
+		document.head.appendChild(link);
+	}
+	if (_originalFaviconHref === null) {
+		_originalFaviconHref = link.href || "";
+	}
+	link.type = "image/svg+xml";
+	link.href = url;
+}
+
+function restoreFavicon() {
+	const link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+	if (link && _originalFaviconHref !== null) {
+		link.href = _originalFaviconHref;
+		link.type = "";
+	}
+}
+
+const myColor = computed(() => {
+	const pid = playerID.value;
+	if (!pid || !G.value?.players) return null;
+	return G.value.players[pid]?.color ?? null;
+});
+
+watch(
+	[isMyTurn, myColor, isConnected],
+	([turn, color, connected]) => {
+		if (!connected) return;
+		const fill = turn && color ? (FAVICON_COLOR_HEX[color] ?? "#94a3b8") : "#64748b";
+		setFavicon(buildMeepleSvgUrl(fill));
+	},
+	{ immediate: true },
+);
+
 const currentPlayerColor = computed(() => {
 	if (!G.value?.players) return null;
 	const cp = currentPlayer.value;
@@ -61,7 +120,7 @@ function measureHeader() {
 	}
 }
 
-// "Your turn" / phase change cue: brief banner + reserved slot for sound
+// "Your turn" / phase change cue: brief banner + sound
 const turnCueMessage = ref("");
 const turnCueVisible = ref(false);
 const prevIsMyTurn = ref(false);
@@ -69,6 +128,36 @@ const prevPhase = ref<GamePhase | undefined>(undefined);
 let cueTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const CUE_DURATION_MS = 2500;
+
+let _audioCtx: AudioContext | null = null;
+function getAudioCtx(): AudioContext {
+	if (!_audioCtx) _audioCtx = new AudioContext();
+	return _audioCtx;
+}
+
+function playTurnSound() {
+	try {
+		const ctx = getAudioCtx();
+		if (ctx.state === "suspended") ctx.resume();
+		const now = ctx.currentTime;
+
+		const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+		notes.forEach((freq, i) => {
+			const osc = ctx.createOscillator();
+			const gain = ctx.createGain();
+			osc.type = "sine";
+			osc.frequency.value = freq;
+			gain.gain.setValueAtTime(0, now + i * 0.12);
+			gain.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.03);
+			gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.35);
+			osc.connect(gain).connect(ctx.destination);
+			osc.start(now + i * 0.12);
+			osc.stop(now + i * 0.12 + 0.4);
+		});
+	} catch {
+		// Audio not available — silently skip
+	}
+}
 
 async function onEnableTurnNotifications() {
 	const p = await requestTurnNotifications();
@@ -127,6 +216,7 @@ watch(
 		if (newTurn && !wasMyTurn) {
 			turnCueMessage.value = finalRound ? "This is your last turn!" : "Your turn!";
 			turnCueVisible.value = true;
+			playTurnSound();
 			cueTimeout = setTimeout(() => {
 				turnCueVisible.value = false;
 				cueTimeout = null;
@@ -265,6 +355,7 @@ onUnmounted(() => {
 	disconnect();
 	stopVotePolling();
 	document.removeEventListener('click', onClickOutsideMenu);
+	restoreFavicon();
 });
 
 async function handleAbandonClick() {

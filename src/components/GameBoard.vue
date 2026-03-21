@@ -209,6 +209,19 @@ function onCellClick(row: number, col: number) {
 	// Glory token reveal is modal: must dismiss before any other action
 	if (showGloryReveal.value) return;
 
+	// Capital move has highest priority — user is choosing a cell for their capital
+	if (
+		activePrompt.value === "capitalMove" &&
+		pendingPlacement.value &&
+		placementTileCellsForCapital.value.length > 1 &&
+		placementTileCellsSetForCapital.value.has(`${row},${col}`)
+	) {
+		confirmPlacementWithCapital(row, col);
+		return;
+	}
+	// If we're in capital move mode, ignore clicks on non-tile cells
+	if (activePrompt.value === "capitalMove" && pendingPlacement.value) return;
+
 	// Spread cult: click valid destination after choosing card + token
 	if (pendingCultSpread.value && isMyTurn.value && spreadCultCardIndex.value !== null && spreadCultTokenType.value !== null) {
 		const key = `${row},${col}`;
@@ -274,17 +287,6 @@ function onCellClick(row: number, col: number) {
 		}
 	}
 
-	// Capital move: picking which square on the placed tile for the capital (multi-cell tile only)
-	if (
-		activePrompt.value === "capitalMove" &&
-		pendingPlacement.value &&
-		placementTileCellsForCapital.value.length > 1 &&
-		placementTileCellsSetForCapital.value.has(`${row},${col}`)
-	) {
-		confirmPlacementWithCapital(row, col);
-		return;
-	}
-
 	if (!isMyTurn.value || !isTilePlacement.value) return;
 	const key = `${row},${col}`;
 	const anchor = cellToAnchor.value.get(key);
@@ -302,8 +304,17 @@ function onCellClick(row: number, col: number) {
 function confirmPlacement(moveCapital: boolean) {
 	if (!pendingPlacement.value) return;
 	const { anchor, rotation: rot } = pendingPlacement.value;
-	pendingPlacement.value = null;
-	move("placeTile", anchor[0], anchor[1], rot, moveCapital);
+	if (moveCapital) {
+		const cells = placementTileCellsForCapital.value;
+		const [capRow, capCol] = cells[0];
+		pendingPlacement.value = null;
+		markRecentTilePlacement();
+		move("placeTile", anchor[0], anchor[1], rot, true, capRow, capCol);
+	} else {
+		pendingPlacement.value = null;
+		markRecentTilePlacement();
+		move("placeTile", anchor[0], anchor[1], rot, false);
+	}
 	hoverAnchor.value = null;
 }
 
@@ -311,6 +322,7 @@ function confirmPlacementWithCapital(capitalRow: number, capitalCol: number) {
 	if (!pendingPlacement.value) return;
 	const { anchor, rotation: rot } = pendingPlacement.value;
 	pendingPlacement.value = null;
+	markRecentTilePlacement();
 	move("placeTile", anchor[0], anchor[1], rot, true, capitalRow, capitalCol);
 	hoverAnchor.value = null;
 }
@@ -377,6 +389,20 @@ const placementTileCellsSetForCapital = computed(() => {
 		set.add(`${r},${c}`);
 	}
 	return set;
+});
+
+const capitalCellLabels = computed<{ row: number; col: number; label: string }[]>(() => {
+	const cells = placementTileCellsForCapital.value;
+	if (cells.length !== 2) return cells.map(([r, c], i) => ({ row: r, col: c, label: `Cell ${i + 1}` }));
+	const [[r0, c0], [r1, c1]] = cells;
+	if (r0 === r1) {
+		const left = c0 < c1 ? { row: r0, col: c0 } : { row: r1, col: c1 };
+		const right = c0 < c1 ? { row: r1, col: c1 } : { row: r0, col: c0 };
+		return [{ ...left, label: "Left" }, { ...right, label: "Right" }];
+	}
+	const top = r0 < r1 ? { row: r0, col: c0 } : { row: r1, col: c1 };
+	const bottom = r0 < r1 ? { row: r1, col: c1 } : { row: r0, col: c0 };
+	return [{ ...top, label: "Top" }, { ...bottom, label: "Bottom" }];
 });
 
 const myTileTemplate = computed(() => {
@@ -459,6 +485,38 @@ function cellWaterEdges(row: number, col: number): boolean[] {
 	const edges = getPreviewBoardEdges(row, col) ?? getBoardEdges(row, col);
 	return waterEdges(edges);
 }
+
+// Detect when the player's capital is displaced by another player's tile placement
+const capitalDisplacedMsg = ref("");
+let capitalDisplacedTimeout: ReturnType<typeof setTimeout> | null = null;
+const prevCapitalPos = ref<{ row: number; col: number } | null>(null);
+let recentlyPlacedTile = false;
+let recentlyPlacedTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function markRecentTilePlacement() {
+	recentlyPlacedTile = true;
+	if (recentlyPlacedTimeout) clearTimeout(recentlyPlacedTimeout);
+	recentlyPlacedTimeout = setTimeout(() => { recentlyPlacedTile = false; }, 3000);
+}
+
+watch(
+	() => {
+		if (!G.value?.pieces || !playerID.value) return null;
+		const cap = G.value.pieces.find((p: BoardPiece) => p.type === "capital" && p.owner === playerID.value);
+		return cap ? { row: cap.row, col: cap.col } : null;
+	},
+	(pos) => {
+		if (!pos) return;
+		const prev = prevCapitalPos.value;
+		if (prev && (prev.row !== pos.row || prev.col !== pos.col) && !pendingPlacement.value && !recentlyPlacedTile) {
+			capitalDisplacedMsg.value = "Your capital was displaced by a new tile!";
+			if (capitalDisplacedTimeout) clearTimeout(capitalDisplacedTimeout);
+			capitalDisplacedTimeout = setTimeout(() => { capitalDisplacedMsg.value = ""; }, 4000);
+		}
+		prevCapitalPos.value = { ...pos };
+	},
+	{ deep: true },
+);
 
 // Debug: log edge state once on load
 const _edgeDebugDone = ref(false);
@@ -642,7 +700,7 @@ function cellClasses(row: number, col: number): string {
 	// Soldier destination highlight
 	if (soldierPhase.value === "selectDest" && soldierReachableSet.value.has(key)) {
 		const hasEnemy =
-			piecesAt(row, col).some((p) => p.type === "worker" && p.owner !== playerID.value && !p.inAgora) ||
+			piecesAt(row, col).some((p) => (p.type === "worker" || p.type === "capital") && p.owner !== playerID.value && !p.inAgora) ||
 			(G.value?.cities ?? []).some((ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col);
 		if (hasEnemy) {
 			if (!canAffordAttackAtCell(row, col)) return "bg-slate-500/15 border-2 border-slate-500/30 cursor-not-allowed";
@@ -1089,22 +1147,38 @@ const MOVE_LABELS: Record<string, string> = {
 	placeTile: "Placed a tile",
 	performAction: "Performed action",
 	collectGoldenAgeIncome: "Collected golden age income",
+	pickCultureCard: "Picked culture card",
+	placeCultureBuilding: "Placed culture building",
+	fillCultCard: "Filled cult card",
+	spreadCultToken: "Spread cult token",
 };
 
+const ACTION_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+	ACTION_TYPES.map((a) => [a.type, a.label]),
+);
+
 const gameLogEntries = computed<DisplayLogEntry[]>(() => {
+	const history = G.value?.history;
+	if (history && Array.isArray(history) && history.length > 0) {
+		return history.map((entry) => {
+			let message = MOVE_LABELS[entry.moveName] ?? entry.moveName;
+			if (entry.moveName === "performAction" && entry.args?.[0]) {
+				const actionType = entry.args[0] as string;
+				message = ACTION_TYPE_LABELS[actionType] ?? actionType;
+			}
+			const playerColor = G.value?.players?.[entry.playerID]?.color;
+			return { message, playerColor };
+		});
+	}
+
 	const raw = G.value?.gameLog;
 	if (!raw || !Array.isArray(raw)) return [];
-
-	const entries: DisplayLogEntry[] = [];
-	for (const item of raw) {
-		if (item.message) {
-			entries.push({
-				message: item.message,
-				playerColor: item.playerColor,
-			});
-		}
-	}
-	return entries;
+	return raw
+		.filter((item: { message?: string }) => !!item.message)
+		.map((item: { message: string; playerColor?: string }) => ({
+			message: item.message,
+			playerColor: item.playerColor,
+		}));
 });
 const gameLogOpen = ref(false);
 
@@ -1721,14 +1795,16 @@ const soldierReachableSet = computed(() => {
 
 const soldierEnemiesAtDest = computed(() => {
 	if (!soldierDest.value || !G.value || !playerID.value)
-		return { workers: [] as BoardPiece[], cities: [] as BoardCity[], defenderIds: [] as string[] };
+		return { workers: [] as BoardPiece[], cities: [] as BoardCity[], capitals: [] as BoardPiece[], defenderIds: [] as string[] };
 	const [r, c] = soldierDest.value;
 	const workers = G.value.pieces.filter((p) => p.type === "worker" && p.owner !== playerID.value && p.row === r && p.col === c && !p.inAgora);
 	const cities = G.value.cities.filter((ct) => ct.owner !== playerID.value && ct.row === r && ct.col === c);
+	const capitals = G.value.pieces.filter((p) => p.type === "capital" && p.owner !== playerID.value && p.row === r && p.col === c);
 	const ids = new Set<string>();
 	for (const w of workers) ids.add(w.owner);
 	for (const ct of cities) ids.add(ct.owner);
-	return { workers, cities, defenderIds: [...ids] };
+	for (const cap of capitals) ids.add(cap.owner);
+	return { workers, cities, capitals, defenderIds: [...ids] };
 });
 
 const soldierAttackCost = computed(() => {
@@ -1758,10 +1834,14 @@ function canAffordAttackAtCell(row: number, col: number): boolean {
 	const enemyCities = G.value.cities.filter(
 		(ct) => ct.owner !== playerID.value && ct.row === row && ct.col === col,
 	);
-	if (enemies.length === 0 && enemyCities.length === 0) return true;
+	const enemyCapitals = G.value.pieces.filter(
+		(p) => p.type === "capital" && p.owner !== playerID.value && p.row === row && p.col === col,
+	);
+	if (enemies.length === 0 && enemyCities.length === 0 && enemyCapitals.length === 0) return true;
 	const defenderIds = new Set<string>();
 	for (const ew of enemies) defenderIds.add(ew.owner);
 	for (const ec of enemyCities) defenderIds.add(ec.owner);
+	for (const cap of enemyCapitals) defenderIds.add(cap.owner);
 	let totalCost = 0;
 	for (const did of defenderIds) {
 		const cost = getAttackCost(G.value, playerID.value, did);
@@ -1776,28 +1856,25 @@ const canFoundCityAtSoldierDest = computed(() => {
 	const [r, c] = soldierDest.value;
 	const tileInfo = getTileAt(G.value.tiles, r, c);
 	if (!tileInfo) return false;
-	const hasEnemies = soldierEnemiesAtDest.value.workers.length > 0 || soldierEnemiesAtDest.value.cities.length > 0;
-	const hasCapitalOrCity =
-		G.value.pieces.some((p) => p.type === "capital" && p.row === r && p.col === c) ||
-		G.value.cities.some((ct) => ct.row === r && ct.col === c && (hasEnemies ? ct.owner === playerID.value : true));
-	if (hasCapitalOrCity && !hasEnemies) return false;
-	if (!hasEnemies) {
-		const player = G.value.players[playerID.value];
-		if (!player) return false;
-		const hasConstruction = player.researchedTechs?.[2]?.[2];
-		const cubeCost = hasConstruction ? 2 : 1;
-		if (player.cubes < cubeCost) return false;
-	} else {
-		const player = G.value.players[playerID.value];
-		if (!player) return false;
-		const hasConstruction = player.researchedTechs?.[2]?.[2];
-		const cubeCost = hasConstruction ? 2 : 1;
-		if (player.cubes < cubeCost) return false;
-		const friendlyCapOrCity =
-			G.value.pieces.some((p) => p.type === "capital" && p.owner === playerID.value && p.row === r && p.col === c) ||
-			G.value.cities.some((ct) => ct.owner === playerID.value && ct.row === r && ct.col === c);
-		if (friendlyCapOrCity) return false;
-	}
+	const hasEnemies = soldierEnemiesAtDest.value.defenderIds.length > 0;
+	// Own capital always blocks city founding
+	const hasOwnCapital = G.value.pieces.some((p) => p.type === "capital" && p.owner === playerID.value && p.row === r && p.col === c);
+	if (hasOwnCapital) return false;
+	// Enemy capital without attack: blocks. With attack: capital will be displaced, so doesn't block.
+	const hasEnemyCapital = soldierEnemiesAtDest.value.capitals.length > 0;
+	if (hasEnemyCapital && !hasEnemies) return false;
+	// Own city always blocks
+	const hasOwnCity = G.value.cities.some((ct) => ct.owner === playerID.value && ct.row === r && ct.col === c);
+	if (hasOwnCity) return false;
+	// Enemy city without attack: blocks
+	const hasEnemyCity = G.value.cities.some((ct) => ct.owner !== playerID.value && ct.row === r && ct.col === c);
+	if (hasEnemyCity && !hasEnemies) return false;
+
+	const player = G.value.players[playerID.value];
+	if (!player) return false;
+	const hasConstruction = player.researchedTechs?.[2]?.[2];
+	const cubeCost = hasConstruction ? 2 : 1;
+	if (player.cubes < cubeCost) return false;
 	return true;
 });
 
@@ -2518,15 +2595,31 @@ watch(activePrompt, (newVal) => {
 	if (newVal) window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
-// Glory token just drawn — show reveal animation for current player only
-const showGloryReveal = computed(() => {
-	const draw = G.value?.lastGloryDraw;
-	if (!draw) return false;
-	const pid = playerID?.value;
-	// Match drawer (use == so string "0" and number 0 both match)
-	return pid != null && String(draw.playerId) === String(pid);
-});
-const lastGloryDrawVp = computed(() => G.value?.lastGloryDraw?.vp ?? 0);
+// Glory token just drawn — show reveal animation for current player only.
+// Tracked client-side because maxMoves:1 ends the turn immediately after the
+// move, so lastGloryDraw on the server can be cleared before the client renders.
+const gloryRevealVp = ref<number | null>(null);
+const showGloryReveal = computed(() => gloryRevealVp.value !== null);
+const lastGloryDrawVp = computed(() => gloryRevealVp.value ?? 0);
+
+let _lastSeenGlorySeq = 0;
+watch(
+	() => G.value?.lastGloryDraw,
+	(draw) => {
+		if (!draw) return;
+		const pid = playerID?.value;
+		if (pid == null || String(draw.playerId) !== String(pid)) return;
+		const seq = (G.value?.history?.length ?? 0);
+		if (seq === _lastSeenGlorySeq) return;
+		_lastSeenGlorySeq = seq;
+		gloryRevealVp.value = draw.vp;
+	},
+	{ immediate: true },
+);
+
+function dismissGloryReveal() {
+	gloryRevealVp.value = null;
+}
 
 // History's Judgement card just picked (first golden age) — show to other players so they can see which card was picked.
 // Use lastHistoryCardPickPlayerId when set (new games); for existing games saved before this feature, infer picker from who has the card in historyCards.
@@ -2583,11 +2676,11 @@ onUnmounted(() => {
 <template>
 	<!-- Game log flyout from the left -->
 	<Teleport to="body">
-		<div class="fixed left-0 top-0 bottom-0 z-20 flex pointer-events-none">
+		<div class="fixed left-0 bottom-0 z-20 flex pointer-events-none" :style="{ top: props.headerHeight + 'px' }">
 			<!-- Tab to open (always visible when panel closed) -->
 			<button
 				type="button"
-				class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-24 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
+				class="pointer-events-auto flex items-center justify-center w-10 h-24 mt-4 rounded-r-lg bg-slate-800/95 border border-l-0 border-slate-600/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/95 transition-colors shadow-md"
 				:class="gameLogOpen ? 'opacity-0 pointer-events-none' : ''"
 				title="Open game log"
 				@click="gameLogOpen = true"
@@ -2656,16 +2749,27 @@ onUnmounted(() => {
 				<template v-if="activePrompt === 'capitalMove'">
 					<template v-if="placementTileCellsForCapital.length > 1">
 						<p class="text-xs md:text-sm text-slate-200 font-medium">
-							Choose a square on the tile for your capital (click a highlighted cell on the board).
+							Move capital? Click a highlighted cell or pick:
 						</p>
 						<button
+							v-for="opt in capitalCellLabels"
+							:key="`${opt.row},${opt.col}`"
+							class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+							:title="`Move capital to the ${opt.label.toLowerCase()} cell`"
+							@click="confirmPlacementWithCapital(opt.row, opt.col)"
+						>
+							{{ opt.label }}
+						</button>
+						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+							title="Place the tile without moving your capital"
 							@click="confirmPlacement(false)"
 						>
 							No, keep capital
 						</button>
 						<button
 							class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+							title="Cancel tile placement and return it to your hand"
 							@click="cancelPlacement"
 						>
 							Cancel
@@ -2677,18 +2781,21 @@ onUnmounted(() => {
 						</p>
 						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+							title="Move your capital to this tile along with its workers"
 							@click="confirmPlacement(true)"
 						>
 							Yes, move capital
 						</button>
 						<button
 							class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+							title="Place the tile without moving your capital"
 							@click="confirmPlacement(false)"
 						>
 							No, keep it
 						</button>
 						<button
 							class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+							title="Cancel tile placement and return it to your hand"
 							@click="cancelPlacement"
 						>
 							Cancel
@@ -2703,12 +2810,14 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Found a new city at this location"
 						@click="onConfirmCity(true)"
 					>
 						Yes
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						title="Skip founding a city here"
 						@click="onConfirmCity(false)"
 					>
 						No
@@ -2731,12 +2840,14 @@ onUnmounted(() => {
 							? 'bg-red-700 hover:bg-red-600 text-white'
 							: 'bg-slate-700 text-slate-500 cursor-not-allowed'"
 						:disabled="!canAffordSoldierAttack"
+						:title="canAffordSoldierAttack ? `Spend ${soldierAttackCost} gold to attack this position` : `Not enough gold to attack (need ${soldierAttackCost})`"
 						@click="onConfirmAttack(true)"
 					>
 						Attack
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						title="Cancel the attack"
 						@click="onConfirmAttack(false)"
 					>
 						Cancel
@@ -2750,12 +2861,14 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Found a city at the conquered location"
 						@click="onSoldierConfirmCity(true)"
 					>
 						Yes
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors"
+						title="Skip founding a city here"
 						@click="onSoldierConfirmCity(false)"
 					>
 						No
@@ -2778,6 +2891,7 @@ onUnmounted(() => {
 									: 'bg-purple-700 hover:bg-purple-600 cursor-pointer'
 							"
 							:disabled="myPlayer?.researchedTechs[rIdx][4] ?? false"
+							:title="row[4].description"
 							@click="!myPlayer?.researchedTechs[rIdx][4] && onIndiaSelectTech(rIdx)"
 						>
 							{{ row[4].name }}
@@ -2785,6 +2899,7 @@ onUnmounted(() => {
 					</div>
 					<button
 						class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+						title="Cancel and choose a different action"
 						@click="onCancelIndia"
 					>
 						Cancel
@@ -2800,6 +2915,7 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						title="Use Greece's ability to build this wonder for free (once per game)"
 						@click="onGreeceWonderChoice(true)"
 					>
 						Build Free
@@ -2807,12 +2923,14 @@ onUnmounted(() => {
 					<button
 						v-if="(myPlayer?.gold ?? 0) >= getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)"
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						:title="`Pay ${getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!)} gold to build this wonder (saves Greece ability for later)`"
 						@click="onGreeceWonderChoice(false)"
 					>
 						Pay {{ getWonderCost(availableWonders.find((c) => c.id === greeceWonderPending)!) }}g
 					</button>
 					<button
 						class="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+						title="Cancel and choose a different action"
 						@click="onCancelGreeceChoice"
 					>
 						Cancel
@@ -2831,6 +2949,7 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Dismiss this notice"
 						@click="dismissGoldenAgeOnlyPrompt"
 					>
 						OK
@@ -2844,12 +2963,14 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						title="End your era early and collect income each turn instead"
 						@click="onConfirmGoldenAge"
 					>
 						Yes
 					</button>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs md:text-sm font-medium transition-colors cursor-pointer"
+						title="Go back and keep taking actions"
 						@click="onCancelGoldenAge"
 					>
 						Cancel
@@ -2863,6 +2984,7 @@ onUnmounted(() => {
 					</p>
 					<button
 						class="px-3 md:px-4 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-xs md:text-sm font-medium transition-colors"
+						title="Receive your Golden Age income and end your turn"
 						@click="onCollectIncome"
 					>
 						Collect 2 Gold
@@ -2896,6 +3018,7 @@ onUnmounted(() => {
 					</div>
 					<button
 						class="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+						title="Skip picking a History's Judgement card"
 						@click="onCancelHistoryPick"
 					>
 						Cancel
@@ -2925,7 +3048,8 @@ onUnmounted(() => {
 					<button
 						type="button"
 						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
-						@click="move('acknowledgeGloryDraw')"
+						title="Dismiss this notification and continue playing"
+						@click="dismissGloryReveal"
 					>
 						Continue
 					</button>
@@ -2960,6 +3084,7 @@ onUnmounted(() => {
 					<button
 						type="button"
 						class="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-amber-950 font-semibold text-sm transition-colors shadow-lg"
+						title="Close this notification"
 						@click="dismissHistoryCardReveal"
 					>
 						Dismiss
@@ -2974,6 +3099,17 @@ onUnmounted(() => {
 		v-if="activePrompt"
 		class="h-10 md:h-12"
 	/>
+
+	<!-- Capital displacement notification -->
+	<Transition name="fade">
+		<div
+			v-if="capitalDisplacedMsg"
+			class="fixed left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-lg bg-red-900/90 border border-red-500/50 text-red-200 text-xs md:text-sm font-medium shadow-lg backdrop-blur-sm pointer-events-none"
+			:style="{ top: (props.headerHeight + 8) + 'px' }"
+		>
+			{{ capitalDisplacedMsg }}
+		</div>
+	</Transition>
 
 	<div
 		v-if="G?.board"
@@ -3105,6 +3241,7 @@ onUnmounted(() => {
 					</div>
 					<button
 						class="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors"
+						title="Reveal this civilisation card to all players and activate it"
 						@click="onChooseCivCard(false)"
 					>
 						Reveal &amp; Confirm
@@ -3146,6 +3283,7 @@ onUnmounted(() => {
 						</div>
 						<button
 							class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium transition-colors"
+							title="Discard the new card and keep your existing civilisation"
 							@click="onChooseCivCard(true)"
 						>
 							Keep Current
@@ -3178,6 +3316,7 @@ onUnmounted(() => {
 						</div>
 						<button
 							class="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
+							title="Discard your current civilisation and adopt this new one"
 							@click="onChooseCivCard(false)"
 						>
 							Switch to New
@@ -3328,11 +3467,11 @@ onUnmounted(() => {
 											v-if="cellWaterEdges(row, col)[3]"
 											class="absolute top-0 left-0 bottom-0 w-[3px] bg-blue-400/70 pointer-events-none z-10"
 										/>
-										<!-- <span
-										v-if="isStartingTileLabel(row, col)"
-										class="text-amber-300/60 text-xs font-medium pointer-events-none select-none"
-										>Start</span
-									> -->
+										<!-- Capital-move cell label overlay -->
+										<span
+											v-if="pendingPlacement && placementTileCellsForCapital.length > 1 && placementTileCellsSetForCapital.has(`${row},${col}`)"
+											class="absolute bottom-1 left-1/2 -translate-x-1/2 text-amber-300 text-[10px] font-bold pointer-events-none select-none z-20 bg-slate-900/70 rounded px-1"
+										>{{ capitalCellLabels.find(o => o.row === row && o.col === col)?.label }}</span>
 
 										<template v-if="resourcesAt(row, col).length === 1 && !previewCells.has(`${row},${col}`)">
 											<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
@@ -3779,6 +3918,7 @@ onUnmounted(() => {
 				<button
 					type="button"
 					class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-700/60 text-amber-200 hover:bg-amber-600/60 transition-colors"
+					title="Skip spreading cult influence to a neighbouring city"
 					@click="onSkipCultSpread"
 				>
 					Skip spread
@@ -3793,9 +3933,10 @@ onUnmounted(() => {
 			:class="isViewingSelf ? PLAYER_COLOR_BORDER[viewedPlayer.color] : 'border-slate-700'"
 		>
 			<!-- Header: arrows + player info + resources -->
-			<div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 md:gap-3 px-3 md:px-4 py-2 md:py-3 border-b border-slate-700/50">
 				<button
 					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
+					title="View previous player's board"
 					@click="cyclePlayer(-1)"
 				>
 					&lsaquo;
@@ -3831,6 +3972,7 @@ onUnmounted(() => {
 							{{ japanTechQueue.length }} tech{{ japanTechQueue.length > 1 ? "s" : "" }} queued ({{ japanQueuedGold }}g)
 							<button
 								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
+								title="Confirm and research all queued technologies"
 								@click="onConfirmJapanTechs"
 							>
 								Confirm
@@ -3841,6 +3983,7 @@ onUnmounted(() => {
 							<button
 								v-if="oxfordTechQueue.length > 0"
 								class="text-green-400 hover:text-green-300 cursor-pointer transition-colors text-xs font-bold leading-none"
+								title="Confirm and research the selected technologies for free"
 								@click="onConfirmOxford"
 							>
 								Confirm
@@ -3861,6 +4004,7 @@ onUnmounted(() => {
 						</template>
 						<button
 							class="text-amber-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel technology selection"
 							@click="onCancelTechSelect"
 						>
 							&times;
@@ -3873,6 +4017,7 @@ onUnmounted(() => {
 						Select a worker
 						<button
 							class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel explorer action"
 							@click="resetExplorer"
 						>
 							&times;
@@ -3885,6 +4030,7 @@ onUnmounted(() => {
 						Select destination
 						<button
 							class="text-cyan-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel explorer action"
 							@click="resetExplorer"
 						>
 							&times;
@@ -3897,6 +4043,7 @@ onUnmounted(() => {
 						Select a worker for Soldier
 						<button
 							class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel soldier action"
 							@click="resetSoldier"
 						>
 							&times;
@@ -3909,6 +4056,7 @@ onUnmounted(() => {
 						Select target
 						<button
 							class="text-red-500 hover:text-red-400 cursor-pointer transition-colors text-sm leading-none"
+							title="Cancel soldier action"
 							@click="resetSoldier"
 						>
 							&times;
@@ -4073,7 +4221,7 @@ onUnmounted(() => {
 					</span>
 				</div>
 
-				<div class="flex items-center gap-2 md:gap-3 text-base text-slate-400 shrink-0">
+				<div class="flex items-center gap-2 md:gap-3 text-sm md:text-base text-slate-400 order-1 md:order-none w-full md:w-auto pl-9 md:pl-0 shrink-0">
 					<span
 						class="inline-flex items-center gap-0.5"
 						title="Gold"
@@ -4122,15 +4270,18 @@ onUnmounted(() => {
 
 				<button
 					class="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-sm flex items-center justify-center transition-colors"
+					title="View next player's board"
 					@click="cyclePlayer(1)"
 				>
 					&rsaquo;
 				</button>
 			</div>
 
-			<!-- Bottom third: cards + invasion track + actions in one row -->
+			<!-- Bottom third: cards + invasion track + actions -->
 			<div class="px-3 md:px-4 pt-1.5 md:pt-2 border-b mb-0 pb-2 border-slate-700/50">
-				<div class="flex gap-2 items-center overflow-x-auto">
+				<div class="flex flex-wrap md:flex-nowrap gap-2 items-start">
+					<!-- Cards area (scrollable) -->
+					<div class="flex gap-2 items-center overflow-x-auto min-w-0 flex-1">
 					<!-- Building slots -->
 					<div
 						v-for="(_, slotIdx) in 3"
@@ -4260,11 +4411,10 @@ onUnmounted(() => {
 						</div>
 					</div>
 
-					<!-- Spacer to push actions right -->
-					<div class="flex-1" />
+				</div>
 
-					<!-- Invasion track + Action icons (right-aligned, stacked) -->
-					<div class="flex flex-col items-stretch gap-2.5 shrink-0 pl-1 border-l border-slate-700/40">
+					<!-- Invasion track + Action icons -->
+					<div class="flex flex-col items-stretch gap-2.5 shrink-0 w-full md:w-auto pt-2 md:pt-0 md:pl-1 md:border-l border-slate-700/40">
 						<!-- Invasion track -->
 						<div class="flex items-center justify-between gap-0.5">
 							<template
@@ -4313,7 +4463,7 @@ onUnmounted(() => {
 												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default'
 										"
 										:disabled="!canDoAction(action.type)"
-										:title="action.label"
+										:title="`${action.label} — ${action.description}`"
 										@click="canDoAction(action.type) && onAction(action.type)"
 									>
 										<component
@@ -4354,7 +4504,7 @@ onUnmounted(() => {
 												: 'bg-slate-800/40 border-slate-700/30 text-slate-500 cursor-default',
 										]"
 										:disabled="!canDoAction(action.type)"
-										:title="action.label"
+										:title="`${action.label} — ${action.description}`"
 										@click="canDoAction(action.type) && onAction(action.type)"
 									>
 										<component
@@ -4456,7 +4606,7 @@ onUnmounted(() => {
 			>
 				<div
 					class="grid gap-1 min-w-[480px]"
-					style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 85px)"
+					style="grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, auto)"
 				>
 					<template
 						v-for="(row, rIdx) in TECH_TREE"
@@ -4465,7 +4615,7 @@ onUnmounted(() => {
 						<div
 							v-for="(tech, cIdx) in row"
 							:key="`tech-${rIdx}-${cIdx}`"
-							class="group rounded-sm px-3 py-2 flex items-start relative overflow-hidden transition-colors border"
+							class="group rounded-sm px-3 py-1.5 flex flex-col relative overflow-hidden transition-colors border"
 							:class="[
 								isTechSelectionActive &&
 									isViewingSelf &&
@@ -4503,26 +4653,32 @@ onUnmounted(() => {
 									: undefined
 							"
 						>
-							<span
-								v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
-								class="text-xs font-bold mr-3 shrink-0"
-								:class="
-									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
-										? 'text-green-400'
-										: 'text-amber-400/80'
-								"
-							>{{
-								(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
-									? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
-									: tech.cost
-							}}</span>
-							<span
-								class="text-sm font-semibold leading-tight truncate"
-								:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-100' : 'text-slate-300'"
-							>{{ tech.name }}</span>
+							<div class="flex items-center">
+								<span
+									v-if="tech.cost > 0 && effectiveTechState(rIdx, cIdx) !== 'researched'"
+									class="text-xs font-bold mr-2 shrink-0"
+									:class="
+										(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === 'available'
+											? 'text-green-400'
+											: 'text-amber-400/80'
+									"
+								>{{
+									(activatingTechSlot !== null || japanDiscount > 0) && effectiveTechState(rIdx, cIdx) === "available"
+										? Math.max(0, tech.cost - Math.max(activatingTechDiscount, japanDiscount))
+										: tech.cost
+								}}</span>
+								<span
+									class="text-sm font-semibold leading-tight truncate"
+									:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-100' : 'text-slate-300'"
+								>{{ tech.name }}</span>
+							</div>
+							<p
+								class="text-[10px] leading-snug mt-0.5"
+								:class="effectiveTechState(rIdx, cIdx) === 'researched' ? 'text-slate-300/70' : 'text-slate-500'"
+							>{{ tech.description }}</p>
 							<div
 								v-if="viewedPlayer.boardCubes?.[`${rIdx + 1},${cIdx + 1}`]"
-								class="absolute top-2.5 right-2 flex gap-0.5"
+								class="absolute top-1.5 right-1.5 flex gap-0.5"
 							>
 								<div
 									v-for="n in viewedPlayer.boardCubes[`${rIdx + 1},${cIdx + 1}`]"
@@ -4530,11 +4686,6 @@ onUnmounted(() => {
 									class="w-3.5 h-3.5"
 									:class="PLAYER_COLOR_CLASSES[viewedPlayer.color]"
 								/>
-							</div>
-							<div
-								class="hidden group-hover:flex absolute z-10 left-0 top-full mt-1 px-2 py-1.5 bg-slate-900 border border-slate-600 rounded shadow-lg text-[10px] text-slate-300 leading-snug whitespace-normal max-w-[200px] pointer-events-none"
-							>
-								{{ tech.description }}
 							</div>
 						</div>
 					</template>
@@ -4703,6 +4854,15 @@ onUnmounted(() => {
 .log-slide-enter-from,
 .log-slide-leave-to {
 	transform: translateX(-100%);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+	transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+	opacity: 0;
 }
 
 /* Glory token reveal overlay */

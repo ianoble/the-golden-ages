@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
+import { Client } from "boardgame.io/client";
+import { SocketIO } from "boardgame.io/multiplayer";
 import { saveSession, loadSession, clearSession } from "@engine/client";
 import { gameDef, PLAYER_COLORS, type PlayerColor } from "../logic/game-logic";
 import { SERVER_URL } from "../config";
@@ -35,6 +37,7 @@ function handleLogout() {
 	logout();
 	myGames.value = [];
 	openGames.value = [];
+	stopAllProbes();
 }
 
 async function restoreServerSessions() {
@@ -207,6 +210,8 @@ async function refreshData() {
 				return m.players.some((p) => !p.name);
 			})
 			.sort((a, b) => b.createdAt - a.createdAt);
+
+		syncTurnProbes();
 	} catch {
 		errorMsg.value = "Could not connect to game server";
 	} finally {
@@ -501,6 +506,76 @@ function matchStatus(match: MatchInfo): "waiting" | "playing" | "finished" {
 	return "waiting";
 }
 
+function currentTurnPlayerName(game: MyGameInfo): string {
+	const info = turnInfo.value[game.matchID];
+	if (!info) return "";
+	const player = game.players.find((p) => String(p.id) === info.currentPlayer);
+	return player?.name ?? `Player ${info.currentPlayer}`;
+}
+
+// ---------------------------------------------------------------------------
+// Turn probes – lightweight boardgame.io clients to track whose turn it is
+// ---------------------------------------------------------------------------
+
+const turnInfo = ref<Record<string, { currentPlayer: string; isMyTurn: boolean }>>({});
+const turnProbes = new Map<string, ReturnType<typeof Client>>();
+
+function syncTurnProbes() {
+	const playingMatchIDs = new Set<string>();
+
+	for (const game of myGames.value) {
+		if (matchStatus(game) !== "playing") continue;
+		playingMatchIDs.add(game.matchID);
+
+		if (turnProbes.has(game.matchID)) continue;
+
+		const session = loadSession(gameDef.id, game.matchID);
+		if (!session?.credentials) continue;
+
+		const mID = game.matchID;
+		const myPID = game.myPlayerID;
+
+		const client = Client({
+			game: gameDef.game,
+			multiplayer: SocketIO({ server: SERVER_URL }),
+			matchID: mID,
+			playerID: session.playerID,
+			credentials: session.credentials,
+		} as Parameters<typeof Client>[0]);
+
+		client.subscribe((state: unknown) => {
+			const s = state as {
+				ctx: { currentPlayer: string };
+				isActive: boolean;
+			} | null;
+			if (!s) return;
+			turnInfo.value[mID] = {
+				currentPlayer: s.ctx.currentPlayer,
+				isMyTurn: s.isActive && s.ctx.currentPlayer === myPID,
+			};
+		});
+
+		client.start();
+		turnProbes.set(mID, client);
+	}
+
+	for (const [matchID, client] of turnProbes) {
+		if (!playingMatchIDs.has(matchID)) {
+			client.stop();
+			turnProbes.delete(matchID);
+			delete turnInfo.value[matchID];
+		}
+	}
+}
+
+function stopAllProbes() {
+	for (const [, client] of turnProbes) {
+		client.stop();
+	}
+	turnProbes.clear();
+	turnInfo.value = {};
+}
+
 // ---------------------------------------------------------------------------
 // Polling & lifecycle
 // ---------------------------------------------------------------------------
@@ -525,7 +600,10 @@ onMounted(async () => {
 	startBrowsePolling();
 });
 
-onUnmounted(stopPolling);
+onUnmounted(() => {
+	stopPolling();
+	stopAllProbes();
+});
 </script>
 
 <template>
@@ -750,18 +828,23 @@ onUnmounted(stopPolling);
 										<span class="text-sm font-medium capitalize">{{ matchStatus(game) }}</span>
 										<span class="text-xs text-slate-500 ml-auto">{{ seatSummary(game.players) }} players</span>
 									</div>
-									<p class="text-xs text-slate-500 mt-1">
-										{{
-											game.players
-												.filter((p) => p.name)
-												.map((p) => p.name)
-												.join(", ")
-										}}
-									</p>
-								</div>
+								<p class="text-xs text-slate-500 mt-1">
+									{{
+										game.players
+											.filter((p) => p.name)
+											.map((p) => p.name)
+											.join(", ")
+									}}
+								</p>
+								<p v-if="matchStatus(game) === 'playing' && turnInfo[game.matchID]" class="text-xs mt-2 font-medium">
+									<span v-if="turnInfo[game.matchID].isMyTurn" class="text-amber-400">Your turn</span>
+									<span v-else class="text-slate-500">{{ currentTurnPlayerName(game) }}'s turn</span>
+								</p>
+							</div>
 								<div class="flex border-t border-slate-700 divide-x divide-slate-700">
 									<button
 										class="flex-1 px-3 py-2 text-xs font-medium text-blue-400 hover:bg-slate-700/50 transition-colors"
+										title="Open this game and continue playing"
 										@click="router.push(`/game/${game.matchID}/${game.myPlayerID}`)"
 									>
 										Resume
@@ -769,6 +852,7 @@ onUnmounted(stopPolling);
 									<button
 										v-if="matchStatus(game) === 'waiting' && game.myPlayerID === '0'"
 										class="flex-1 px-3 py-2 text-xs font-medium text-slate-400 hover:bg-slate-700/50 transition-colors"
+										title="Fill all empty seats with AI players"
 										@click="fillBotsForGame(game.matchID)"
 									>
 										Add Bots
@@ -776,6 +860,7 @@ onUnmounted(stopPolling);
 									<button
 										v-if="game.myPlayerID === '0'"
 										class="flex-1 px-3 py-2 text-xs font-medium text-red-400/70 hover:bg-red-900/20 hover:text-red-400 transition-colors"
+										title="Delete this game permanently"
 										@click="abandonGame(game.matchID)"
 									>
 										Abandon
@@ -809,6 +894,7 @@ onUnmounted(stopPolling);
 									</div>
 								<button
 									class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition-colors"
+									title="Pick a color and join this game"
 									@click="openJoinModal(game)"
 								>
 									Join
@@ -875,6 +961,7 @@ onUnmounted(stopPolling);
 					<button
 						class="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 						:disabled="!allSeatsFilled"
+						:title="allSeatsFilled ? 'Launch the game with all players' : 'All seats must be filled before starting'"
 						@click="startGame"
 					>
 						{{ allSeatsFilled ? "Start Game" : `Waiting for players (${filledCount}/${hostedPlayers.length})...` }}
@@ -884,12 +971,14 @@ onUnmounted(stopPolling);
 						<button
 							class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-400 hover:text-white font-medium transition-colors disabled:opacity-50"
 							:disabled="fillingBots"
+							title="Fill all remaining empty seats with AI players"
 							@click="fillWithBots"
 						>
 							{{ fillingBots ? "Adding..." : "Fill with Bots" }}
 						</button>
 						<button
 							class="flex-1 py-2.5 bg-slate-800 hover:bg-red-900/40 border border-slate-700 hover:border-red-800 rounded-lg text-sm text-slate-400 hover:text-red-400 font-medium transition-colors"
+							title="Cancel this game and return to the lobby"
 							@click="abandonHostedGame"
 						>
 							Abandon Game
